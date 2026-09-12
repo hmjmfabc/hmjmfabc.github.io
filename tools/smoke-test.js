@@ -75,6 +75,7 @@ function makeStorage() {
 }
 
 const failures = [];
+const warnings = [];
 function check(condition, label) {
   if (condition) {
     console.log(`  ✅ ${label}`);
@@ -82,6 +83,27 @@ function check(condition, label) {
     console.log(`  ❌ ${label}`);
     failures.push(label);
   }
+}
+/** 与环境相关、不作为失败项的检查 */
+function warn(condition, label) {
+  if (condition) console.log(`  ✅ ${label}`);
+  else {
+    console.log(`  ⚠️  ${label}（本次环境不满足，跳过）`);
+    warnings.push(label);
+  }
+}
+
+/** 与后端 lib/monitor.js 完全一致的状态判定规则 */
+function expectServerStatus(endpoints) {
+  const total = endpoints.length;
+  const online = endpoints.filter((e) => (e.state || (e.online ? 'online' : 'offline')) === 'online').length;
+  const offline = endpoints.filter((e) => (e.state || (e.online ? 'online' : 'offline')) === 'offline').length;
+  const unknown = total - online - offline;
+  if (online === total) return 'up';
+  if (offline === total) return 'down';
+  if (online === 0 && unknown === total) return 'unknown';
+  if (offline === 0 && online > 0) return 'up';
+  return 'partial';
 }
 
 (async () => {
@@ -100,14 +122,23 @@ function check(condition, label) {
 
   console.log('\n[2/6] 校验状态聚合规则');
   for (const server of data.servers) {
-    const online = server.endpoints.filter((e) => e.online).length;
-    const expected = online === server.endpoints.length ? 'up' : online === 0 ? 'down' : 'partial';
-    check(server.status === expected, `${server.name}：${online}/${server.endpoints.length} 在线 → ${server.status}（期望 ${expected}）`);
+    const expected = expectServerStatus(server.endpoints);
+    const detail = server.endpoints
+      .map((e) => `${e.label}=${e.state || (e.online ? 'online' : 'offline')}`)
+      .join(' ');
+    check(server.status === expected, `${server.name}：${detail} → ${server.status}（期望 ${expected}）`);
   }
   const upCount = data.servers.filter((s) => s.status === 'up').length;
   const downCount = data.servers.filter((s) => s.status === 'down').length;
-  const expectedOverall = upCount === data.servers.length ? 'up' : downCount === data.servers.length ? 'down' : 'partial';
+  const unknownCount = data.servers.filter((s) => s.status === 'unknown').length;
+  const expectedOverall =
+    upCount === data.servers.length ? 'up'
+      : downCount === data.servers.length ? 'down'
+        : upCount === 0 && unknownCount === data.servers.length ? 'unknown'
+          : 'partial';
   check(data.overall === expectedOverall, `总览状态 ${data.overall}（期望 ${expectedOverall}）`);
+  warn(data.hostIpv6 !== false || data.summary.endpointsUnknown > 0, '探测端无 IPv6 时，IPv6 线路被标记为「未验证」而非离线');
+  warn(data.hostIpv6 === false || data.summary.endpointsUnknown === 0, '探测端有 IPv6 时，所有线路均得到确定状态');
 
   console.log('\n[3/6] 前端渲染测试（极简 DOM 桩）');
   const els = {};
@@ -148,7 +179,14 @@ function check(condition, label) {
   check(!ipPattern.test(html), '页面不出现 IPv4 地址');
   check(!ipv6Pattern.test(html.replace(/data-endpoint="[^"]*"/g, '')), '页面不出现 IPv6 地址');
   check(!/<div class="note"/.test(html), '不渲染灰色小字解析说明（含 SRV/AAAA 信息）');
-  check(/class="motd"[\s\S]*?style="color:#[0-9A-F]{6}"/.test(html), 'MOTD 以彩色分段渲染');
+  const colored = data.servers
+    .flatMap((s) => s.endpoints)
+    .some((e) => (e.motdSegments || []).some((seg) => seg.c));
+  if (colored) {
+    check(/class="motd"[\s\S]*?style="[^"]*color:#[0-9A-F]{6}/.test(html), 'MOTD 以彩色分段渲染');
+  } else {
+    warn(false, '本轮无在线彩色 MOTD，跳过彩色渲染校验');
+  }
   const motdRule = /\.motd\s*\{([^}]*)\}/.exec(css);
   check(!!motdRule && /background:\s*(var\(--card-bg\)|#fff\b|#ffffff|white)/i.test(motdRule[1]), 'MOTD 背景为白色');
   check(!!motdRule && !/background:\s*#(2|1|0)[0-9a-f]{2}/i.test(motdRule[1]), 'MOTD 不再使用深色背景');

@@ -392,7 +392,12 @@ async function loadStatus(options = {}) {
     renderGroups(data);
     renderFooter(data);
     renderSource(data);
-    showNotice('');
+    // 本机（自建后端）没有 IPv6 出口时给出明确提示，避免把探测端问题误读为服务器掉线
+    if (data.hostIpv6 === false) {
+      showNotice('当前探测端（本机）没有 IPv6 网络，IPv6 线路无法验证，已标记为「未验证」而非离线。');
+    } else {
+      showNotice('');
+    }
   } catch (err) {
     state.lastError = err;
     el.overall.dataset.status = 'unknown';
