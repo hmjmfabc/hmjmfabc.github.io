@@ -1,0 +1,22 @@
+{
+  "name": "sgu-swordsman-status",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SGU 剑客群组服 状态监测 —— Minecraft 服务器状态监测网站（零第三方依赖）",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "logo": "node tools/resize-logo.js logo.png public/logo.png 192 && node tools/resize-logo.js logo.png public/favicon.png 64"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "minecraft",
+    "status",
+    "monitor",
+    "srv"
+  ],
+  "license": "MIT"
+}
