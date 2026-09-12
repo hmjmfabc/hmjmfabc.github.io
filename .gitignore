@@ -3,6 +3,8 @@ logs/
 data/
 dist/
 
+# 注意：docs/ 是 GitHub Pages 的发布目录，必须提交，不能忽略
+
 # 依赖与缓存
 node_modules/
 .npm/

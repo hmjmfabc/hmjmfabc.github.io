@@ -133,10 +133,13 @@ Web/
 ├── tools/
 │   ├── resize-logo.js     # 纯 Node PNG 缩放/压缩工具（无第三方依赖）
 │   ├── build-config.js    # 由 lib/servers.js 生成 public/config.js
-│   ├── build-site.js      # 构建 GitHub Pages 静态产物到 dist/
+│   ├── build-site.js      # 构建 GitHub Pages 静态产物（--out=docs|dist）
 │   ├── smoke-test.js      # 本地后端模式端到端自检
 │   └── static-test.js     # 模拟 Pages 环境（无后端）自检
-├── .github/workflows/pages.yml  # GitHub Pages 自动部署
+├── docs/                  # GitHub Pages 发布目录（由 public/ 构建生成）
+├── .github/workflows/pages.yml  # 备选：用 GitHub Actions 发布
+├── deploy.sh              # 一条命令：构建 docs/ → 提交 → 推送
+├── push.sh                # 仅推送（首次推送用）
 ├── DEPLOY.md              # 部署步骤（含需要你手动操作的部分）
 ├── data/history.json      # 最近 24 次（2 小时）检查历史，重启后仍保留
 ├── start.sh               # 后台启动 / 停止 / 状态脚本
