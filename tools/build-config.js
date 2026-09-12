@@ -21,8 +21,13 @@ const payload = {
   refreshIntervalMs: config.refreshIntervalMs,
   historyLimit: 24,
   probe: {
-    // 浏览器端 DNS 解析（DoH）：阿里云公共 DNS，国内可访问且支持 SRV
-    doh: 'https://dns.alidns.com/resolve',
+    // 浏览器端 DNS 解析（DoH，按顺序尝试）：阿里云公共 DNS 国内可访问且支持 SRV，
+    // 后两个作为境外访客的备用解析通道
+    doh: [
+      'https://dns.alidns.com/resolve',
+      'https://cloudflare-dns.com/dns-query',
+      'https://dns.google/resolve',
+    ],
     // 状态探测接口，按顺序尝试；{address} 会被替换为 域名 / IP:端口
     providers: [
       { name: 'mcsrvstat.us', url: 'https://api.mcsrvstat.us/3/{address}' },

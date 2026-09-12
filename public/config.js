@@ -11,7 +11,11 @@ window.SGU_CONFIG = {
   "refreshIntervalMs": 300000,
   "historyLimit": 24,
   "probe": {
-    "doh": "https://dns.alidns.com/resolve",
+    "doh": [
+      "https://dns.alidns.com/resolve",
+      "https://cloudflare-dns.com/dns-query",
+      "https://dns.google/resolve"
+    ],
     "providers": [
       {
         "name": "mcsrvstat.us",

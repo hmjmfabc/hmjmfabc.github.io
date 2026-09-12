@@ -16,7 +16,7 @@
     refreshIntervalMs: 5 * 60 * 1000,
     historyLimit: 24,
     probe: {
-      doh: 'https://dns.alidns.com/resolve',
+      doh: ['https://dns.alidns.com/resolve'],
       providers: [{ name: 'mcsrvstat.us', url: 'https://api.mcsrvstat.us/3/{address}' }],
       requestTimeoutMs: 9000,
       minIntervalMs: 1100,
@@ -60,12 +60,33 @@
 
   async function dohQuery(name, type) {
     const { probe } = config();
-    const url = `${probe.doh}?name=${encodeURIComponent(name)}&type=${type}`;
-    const data = await getJson(url, probe.requestTimeoutMs);
-    const answers = Array.isArray(data.Answer) ? data.Answer : [];
-    return answers
-      .filter((a) => (type === 'SRV' ? a.type === 33 : type === 'AAAA' ? a.type === 28 : a.type === 1))
-      .map((a) => String(a.data));
+    const servers = Array.isArray(probe.doh) ? probe.doh : [probe.doh];
+    const wantType = type === 'SRV' ? 33 : type === 'AAAA' ? 28 : 1;
+    let lastError = null;
+
+    for (const server of servers) {
+      if (!server) continue;
+      const url = `${server}?name=${encodeURIComponent(name)}&type=${type}`;
+      try {
+        const res = await withTimeout(
+          fetch(url, { headers: { Accept: 'application/dns-json' }, cache: 'no-store' }),
+          probe.requestTimeoutMs,
+          'DNS 查询超时'
+        );
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const answers = Array.isArray(data.Answer) ? data.Answer : [];
+        const matched = answers.filter((a) => a.type === wantType).map((a) => String(a.data));
+        if (matched.length) return matched;
+        // 该解析通道可用但没有记录，直接返回空（换通道也是同样结果）
+        if (typeof data.Status === 'number' && data.Status === 0) return [];
+        lastError = `DNS 状态码 ${data.Status}`;
+      } catch (err) {
+        lastError = err.message;
+      }
+    }
+    if (lastError) throw new Error(lastError);
+    return [];
   }
 
   function parseSrv(data) {
