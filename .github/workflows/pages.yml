@@ -18,37 +18,60 @@ jobs:
   build:
     name: 构建静态站点
     runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: 安装 Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          node-version: '22'
+
+      # GitHub Pages 必须先由仓库管理员在 Settings → Pages 里启用（Source 选 GitHub Actions）。
+      # 机器人令牌没有创建 Pages 站点的权限（会报 Resource not accessible by integration），
+      # 所以这里先探测：未启用时给出明确提示并跳过发布，而不是抛一个看不懂的 HttpError。
+      - name: 检查仓库是否已启用 Pages
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/pages")
+          echo "Pages API 返回：$code"
+          if [ "$code" = "404" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=尚未启用 GitHub Pages::请让仓库管理员打开 Settings → Pages，把 Build and deployment 的 Source 设为「GitHub Actions」并保存，然后到 Actions 页重新运行本工作流（Re-run all jobs）。"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
 
       # 构建脚本会依据 GITHUB_REPOSITORY 自动选择 CNAME：
       #   hmjmfabc/hmjmfabc.github.io                     → status.yunmc.icu
       #   mingyu-games-wmjbfs/status-swordsman.github.io  → status.swordsman.top
       # 也可在仓库 Variables 里设置 SITE_DOMAIN 覆盖
-      - name: 构建静态站点（生成 config.js、注入版本号、写入 CNAME）
+      - name: 构建静态站点
         run: node tools/build-site.js --version=${{ github.sha }}
         env:
           SITE_DOMAIN: ${{ vars.SITE_DOMAIN }}
 
       - name: 配置 Pages
-        uses: actions/configure-pages@v5
-        with:
-          enablement: true
+        if: steps.check.outputs.ready == 'true'
+        uses: actions/configure-pages@v6
 
       - name: 上传产物
-        uses: actions/upload-pages-artifact@v3
+        if: steps.check.outputs.ready == 'true'
+        uses: actions/upload-pages-artifact@v5
         with:
           path: dist
 
   deploy:
     name: 发布
     needs: build
+    if: needs.build.outputs.ready == 'true'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -56,4 +79,4 @@ jobs:
     steps:
       - name: 部署到 GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
