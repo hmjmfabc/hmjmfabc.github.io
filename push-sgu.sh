@@ -15,7 +15,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 REMOTE="sgu"
-URL="https://github.com/mingyu-games-wmjbfs/status-swordsman.github.io.git"
+URL="git@github.com:mingyu-games-wmjbfs/status-swordsman.github.io.git"
 BRANCH="main"
 DOMAIN="status.swordsman.top"
 

@@ -2,12 +2,11 @@
 # 一键推送到 GitHub（配合 DEPLOY.md 使用）
 #
 # 用法：
-#   ./push.sh                       # 推送到默认仓库 hmjmfabc/hmjmfabc.github.io
+#   ./push.sh                       # 推送到默认仓库 hmjmfabc/hmjmfabc.github.io（SSH）
 #   REPO_URL=git@github.com:hmjmfabc/hmjmfabc.github.io.git ./push.sh
 #
-# 首次推送需要身份验证：
-#   HTTPS：用户名填 hmjmfabc，密码处粘贴 Personal Access Token（需 Contents 读写权限）
-#   SSH  ：先在 GitHub 添加本机公钥
+# 本机已配置 SSH 密钥并绑定 hmjmfabc 账号，正常无需输入任何凭据。
+# 若提示 Permission denied，可用 HTTPS + 令牌：REPO_URL=https://github.com/... ./push.sh
 
 set -euo pipefail
 cd "$(dirname "$0")"

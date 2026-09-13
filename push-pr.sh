@@ -5,21 +5,18 @@
 # 用法：
 #   ./push-pr.sh
 #
-# 需要该仓库的写权限。推送时会要求身份验证：
-#   Username → hmjmfabc
-#   Password → 你的 Personal Access Token（粘贴时不显示）
+# 使用 SSH（已通过测试）：本机密钥已绑定 hmjmfabc，无需令牌、无需输入密码。
 #
 # 若提示 "Permission ... denied"，说明当前凭据对该仓库没有写权限，依次检查：
 #   1. 协作者邀请是否已接受：https://github.com/mingyu-games-wmjbfs/status-swordsman.github.io/invitations
-#   2. 令牌的 Repository access 是否包含该仓库（或选 All repositories）
-#      https://github.com/settings/personal-access-tokens
+#   2. 本机 SSH 密钥是否已绑定账号：ssh -T git@github.com 应显示 "Hi hmjmfabc!"
 
 set -euo pipefail
 cd "$(dirname "$0")"
 
 BRANCH="add-status-site"
 REPO="mingyu-games-wmjbfs/status-swordsman.github.io"
-URL="https://github.com/${REPO}.git"
+URL="git@github.com:${REPO}.git"
 PR_URL="https://github.com/${REPO}/compare/main...${BRANCH}?expand=1"
 
 echo "① 确认待推送分支"
@@ -46,10 +43,8 @@ else
 1) 协作者邀请是否已接受（用 hmjmfabc 登录后打开）：
    https://github.com/${REPO}/invitations
 
-2) 令牌的 Repository access 是否包含该仓库：
-   https://github.com/settings/personal-access-tokens
-   → 打开你的令牌 → Repository access 改成 All repositories（或勾选该仓库）
-   → 确认 Permissions → Contents = Read and write → Save
+2) 本机 SSH 密钥是否已绑定 hmjmfabc：执行 ssh -T git@github.com
+   应显示 "Hi hmjmfabc! You've successfully authenticated"。
 
 3) 若仍失败，可改用「管理员网页导入」方案（无需任何权限配置）：
    https://github.com/new/import
