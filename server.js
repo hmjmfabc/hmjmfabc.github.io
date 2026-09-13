@@ -39,7 +39,7 @@ const MIME = {
 const LONG_CACHE_EXT = new Set(['.png', '.jpg', '.jpeg', '.webp', '.svg', '.ico', '.woff2']);
 
 // index.html 中引用到的本地资源，服务端自动追加版本号，避免浏览器使用旧缓存
-const VERSIONED_ASSETS = ['style.css', 'app.js', 'config.js', 'motd.js', 'probe.js', 'logo.png', 'favicon.png'];
+const VERSIONED_ASSETS = ['style.css', 'app.js', 'config.js', 'i18n.js', 'motd.js', 'probe.js', 'logo.png', 'favicon.png'];
 
 /** 依据资源文件的最新修改时间生成版本号 */
 function assetVersion() {

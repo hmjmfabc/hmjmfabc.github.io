@@ -13,15 +13,44 @@ const LOCAL_API_BASE = String(CONFIG.localApiBase || 'http://127.0.0.1:8787').re
 const MODE = CONFIG.mode || 'auto'; // auto | server | static
 const API = `${API_BASE}/api/status`;
 const THEME_KEY = 'sgu-theme';
+const I18N = (typeof window !== 'undefined' && window.SGUI18n) || null;
+/** 取当前语言文案；i18n 未加载时退回键名，保证不白屏 */
+function t(key, vars) {
+  return I18N ? I18N.t(key, vars) : key;
+}
 const BACKEND_KEY = 'sgu-backend';
 const THEME_COLOR = { light: '#d7b777', dark: '#0b0e13' };
 
 const STATUS_TEXT = {
-  up: '运行正常',
-  partial: '部分异常',
-  down: '全部掉线',
-  unknown: '未验证',
+  get up() { return t('status.up'); },
+  get partial() { return t('status.partial'); },
+  get down() { return t('status.down'); },
+  get unknown() { return t('status.unknown'); },
 };
+
+/** 探测/解析错误码 → 可翻译文案 */
+const ERROR_KEYS = {
+  TIMEOUT: 'endpoint.msg.timeout',
+  ETIMEDOUT: 'endpoint.msg.timeout',
+  DNS_ERROR: 'endpoint.msg.dns',
+  ENOTFOUND: 'endpoint.msg.dns',
+  ENODATA: 'endpoint.msg.dns',
+  ECONNREFUSED: 'endpoint.msg.refused',
+  EHOSTUNREACH: 'endpoint.msg.unreachable',
+  ENETUNREACH: 'endpoint.msg.unreachable',
+  NO_LOCAL_IPV6: 'endpoint.msg.noipv6',
+  NO_RESPONSE: 'endpoint.msg.unknown',
+  PROBE_FAILED: 'endpoint.msg.probeFailed',
+  OFFLINE: 'endpoint.msg.offline',
+  CLOSED: 'endpoint.msg.unknown',
+  CONNECT_FAILED: 'endpoint.msg.unreachable',
+};
+
+function endpointMessage(ep) {
+  const key = ERROR_KEYS[ep && ep.error];
+  if (key) return t(key);
+  return (ep && ep.message) || t('endpoint.msg.unknown');
+}
 
 const el = {
   overall: document.getElementById('overall'),
@@ -36,7 +65,106 @@ const el = {
   backendOptions: document.getElementById('backend-options'),
   backendActive: document.getElementById('backend-active'),
   backendNote: document.getElementById('backend-note'),
+  langToggle: document.getElementById('lang-toggle'),
+  langMenu: document.getElementById('lang-menu'),
+  langCurrent: document.getElementById('lang-current'),
 };
+
+/* ---------------- 语言切换 ---------------- */
+
+/** 替换静态文案（index.html 中带 data-i18n 的节点） */
+function applyStaticI18n() {
+  if (typeof document === 'undefined') return;
+  document.querySelectorAll('[data-i18n]').forEach((node) => {
+    node.textContent = t(node.getAttribute('data-i18n'));
+  });
+  document.querySelectorAll('[data-i18n-title]').forEach((node) => {
+    node.setAttribute('title', t(node.getAttribute('data-i18n-title')));
+  });
+  document.querySelectorAll('[data-i18n-aria]').forEach((node) => {
+    node.setAttribute('aria-label', t(node.getAttribute('data-i18n-aria')));
+  });
+  document.title = t('site.title');
+}
+
+function renderLangPicker() {
+  if (!el.langMenu) return;
+  const langs = (I18N && I18N.LANGS) || [];
+  const current = (I18N && I18N.getLang && I18N.getLang()) || 'zh-CN';
+  el.langMenu.innerHTML = langs
+    .map(
+      (l) => `
+      <button type="button" class="lang-item${l.code === current ? ' is-active' : ''}" role="option"
+              aria-selected="${l.code === current}" data-lang="${escapeHtml(l.code)}">
+        <span class="lang-item-label">${escapeHtml(l.label)}</span>
+        <span class="lang-item-short">${escapeHtml(l.short)}</span>
+      </button>`
+    )
+    .join('');
+  el.langMenu.querySelectorAll('.lang-item').forEach((btn) => {
+    btn.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (I18N) I18N.setLang(btn.getAttribute('data-lang'));
+      closeLangMenu();
+      applyI18n();
+    });
+  });
+  const cur = langs.find((l) => l.code === current);
+  if (el.langCurrent) el.langCurrent.textContent = cur ? cur.short : '文';
+}
+
+function openLangMenu() {
+  if (!el.langMenu) return;
+  el.langMenu.hidden = false;
+  el.langMenu.classList.add('show');
+  if (el.langToggle) el.langToggle.setAttribute('aria-expanded', 'true');
+}
+
+function closeLangMenu() {
+  if (!el.langMenu) return;
+  el.langMenu.hidden = true;
+  el.langMenu.classList.remove('show');
+  if (el.langToggle) el.langToggle.setAttribute('aria-expanded', 'false');
+}
+
+function initLangPicker() {
+  if (!el.langToggle) return;
+  renderLangPicker();
+  el.langToggle.setAttribute('title', t('ui.langTitle'));
+  el.langToggle.setAttribute('aria-label', t('ui.langTitle'));
+  el.langToggle.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (el.langMenu && el.langMenu.hidden) openLangMenu();
+    else closeLangMenu();
+  });
+  document.addEventListener('click', (event) => {
+    if (!el.langMenu || el.langMenu.hidden) return;
+    if (el.langMenu.contains(event.target) || (el.langToggle && el.langToggle.contains(event.target))) return;
+    closeLangMenu();
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeLangMenu();
+  });
+}
+
+/** 语言变化后整体重刷（不重新请求数据） */
+function applyI18n() {
+  applyStaticI18n();
+  renderLangPicker();
+  initLogoLink();
+  applyTheme(currentTheme(), false);
+  if (state.lastData) {
+    renderOverall(state.lastData);
+    renderGroups(state.lastData);
+    renderFooter(state.lastData);
+    renderSource(state.lastData);
+  }
+  renderBackendCard();
+  renderBackendNote(state.backend.notice);
+  tickCountdown();
+}
 
 /* ---------------- 后端（数据来源）选择 ---------------- */
 
@@ -54,11 +182,8 @@ function clientPingAvailable() {
 }
 
 function clientPingBlockReason() {
-  if (typeof WebSocket === 'undefined') return '当前浏览器不支持 WebSocket';
-  if (typeof location !== 'undefined' && location.protocol !== 'http:') {
-    return '当前页面是 HTTPS 打开的，浏览器会拦截到目标端口的连接，请改用 http:// 打开本页';
-  }
-  return '当前环境不支持';
+  if (typeof WebSocket === 'undefined') return t('backend.client.disabled');
+  return t('backend.client.disabled');
 }
 
 function readBackendPref() {
@@ -134,59 +259,102 @@ function renderBackendCard() {
     (CONFIG.probe && Array.isArray(CONFIG.probe.providers) && CONFIG.probe.providers) ||
     (window.SGUProbe && window.SGUProbe.listProviders ? window.SGUProbe.listProviders() : []);
   const activeProvider = state.backend.activeProvider || (providers[0] && providers[0].name) || '';
+  const expanded = state.backend.expandedRemote;
+
+  const backendName = (b) => {
+    const v = t(`backend.${b.id}.name`);
+    return v === `backend.${b.id}.name` ? b.name : v;
+  };
+  const backendText = (b, key, fallback) => {
+    const v = t(`backend.${b.id}.${key}`);
+    return v === `backend.${b.id}.${key}` ? fallback : v;
+  };
 
   el.backendOptions.innerHTML = BACKENDS.map((backend) => {
     const disabledReason = backendDisabledReason(backend);
     const disabled = !!disabledReason;
     const checked = pref.source === backend.id;
-    const subOptions =
-      backend.id === 'remote' && providers.length
-        ? `<div class="backend-suboptions">${providers
-            .map(
-              (p) => `
-          <label class="backend-suboption${disabled ? ' is-disabled' : ''}">
+    const name = backendName(backend);
+    const hint = backendText(backend, 'hint', backend.hint);
+
+    // 选项①的探测接口列表：默认折叠，点击「选择探测接口」才展开
+    let subBlock = '';
+    if (backend.id === 'remote' && providers.length) {
+      const options = providers
+        .map(
+          (p) => `
+          <label class="backend-suboption">
             <input type="radio" name="backend-provider" value="${escapeHtml(p.name)}"${
-                pref.provider === p.name || (!pref.provider && activeProvider === p.name) ? ' checked' : ''
-              }>
+              pref.provider === p.name || (!pref.provider && activeProvider === p.name) ? ' checked' : ''
+            }>
             <span class="backend-sub-body">
               <span class="backend-sub-name">${escapeHtml(p.name)}</span>
               <span class="backend-sub-note">${escapeHtml(p.note || '')}</span>
             </span>
           </label>`
-            )
-            .join('')}</div>`
-        : '';
+        )
+        .join('');
+      const current = pref.provider || activeProvider;
+      subBlock = `
+          <div class="backend-subwrap">
+            <button type="button" class="backend-subtoggle" aria-expanded="${expanded ? 'true' : 'false'}"${
+              disabled ? ' disabled' : ''
+            }>
+              <span class="caret" aria-hidden="true">▸</span>
+              <span>${escapeHtml(t('backend.subtoggle'))}</span>
+              ${current ? `<span class="backend-subcurrent">${escapeHtml(current)}</span>` : ''}
+            </button>
+            <div class="backend-suboptions"${expanded ? '' : ' hidden'}>${options}</div>
+          </div>`;
+    }
 
     return `
-      <label class="backend-option${checked ? ' is-active' : ''}${disabled ? ' is-disabled' : ''}" data-backend="${backend.id}">
-        <input type="radio" name="backend-source" value="${backend.id}"${checked ? ' checked' : ''}${disabled ? ' disabled' : ''}>
+      <label class="backend-option${checked ? ' is-active' : ''}${disabled ? ' is-disabled' : ''}" data-backend="${
+      backend.id
+    }">
+        <input type="radio" name="backend-source" value="${backend.id}"${checked ? ' checked' : ''}${
+      disabled ? ' disabled' : ''
+    }>
         <span class="backend-body">
           <span class="backend-name">
-            <span class="backend-index">${backend.index}</span>${escapeHtml(backend.name)}
-            ${backend.id === (CONFIG.defaultBackend || 'remote') ? '<span class="backend-tag">默认</span>' : ''}
-            ${backend.warn ? `<span class="backend-tag tag-warn">${escapeHtml(backend.warn)}</span>` : ''}
-            ${disabled ? `<span class="backend-tag tag-off">${escapeHtml(disabledReason)}</span>` : ''}
-            ${state.backend.via === backend.id ? '<span class="backend-tag tag-live">使用中</span>' : ''}
+            <span class="backend-index">${escapeHtml(backend.index || '')}</span>${escapeHtml(name)}
+            ${
+              backend.id === (CONFIG.defaultBackend || 'remote')
+                ? `<span class="backend-tag">${escapeHtml(t('backend.default'))}</span>`
+                : ''
+            }
+            ${
+              backend.warn
+                ? `<span class="backend-tag tag-warn">${escapeHtml(backendText(backend, 'warn', backend.warn))}</span>`
+                : ''
+            }
+            ${
+              disabled
+                ? `<span class="backend-tag tag-off">${escapeHtml(
+                    backendText(backend, 'disabled', disabledReason)
+                  )}</span>`
+                : ''
+            }
+            ${
+              state.backend.via === backend.id
+                ? `<span class="backend-tag tag-live">${escapeHtml(t('backend.inUse'))}</span>`
+                : ''
+            }
           </span>
-          <span class="backend-hint">${escapeHtml(backend.hint)}</span>
-          ${
-            backend.publicUrl && !disabled
-              ? `<span class="backend-hint">服务地址：${escapeHtml(backend.publicUrl)}</span>`
-              : ''
-          }
-          ${subOptions}
+          <span class="backend-hint">${escapeHtml(hint)}</span>
+          ${backend.publicUrl && !disabled ? `<span class="backend-hint">${escapeHtml(backend.publicUrl)}</span>` : ''}
+          ${subBlock}
         </span>
       </label>`;
   }).join('');
 
-  // 绑定事件
+  // 选择数据来源
   el.backendOptions.querySelectorAll('input[name="backend-source"]').forEach((input) => {
     input.addEventListener('change', () => {
       if (!input.checked) return;
       const chosen = backendById(input.value);
       const blocked = chosen ? backendDisabledReason(chosen) : null;
       if (blocked) {
-        renderBackendNote(`「${chosen.name}」当前不可用：${blocked}`);
         renderBackendCard();
         return;
       }
@@ -196,6 +364,8 @@ function renderBackendCard() {
       loadStatus({ force: true });
     });
   });
+
+  // 选择具体探测接口
   el.backendOptions.querySelectorAll('input[name="backend-provider"]').forEach((input) => {
     input.addEventListener('change', () => {
       if (!input.checked) return;
@@ -206,21 +376,34 @@ function renderBackendCard() {
     });
   });
 
+  // 展开 / 收起接口列表（点击不触发父级选项选中）
+  el.backendOptions.querySelectorAll('.backend-subtoggle').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      state.backend.expandedRemote = !state.backend.expandedRemote;
+      renderBackendCard();
+    });
+  });
+
   // 当前生效说明（首次获取完成前不猜测）
   if (el.backendActive) {
-    const names = {};
-    for (const b of BACKENDS) names[b.id] = b.name;
     const via = state.backend.via;
     if (!via) {
-      el.backendActive.textContent = '正在检测…';
+      el.backendActive.textContent = t('backend.detecting');
     } else {
+      const b = backendById(via);
       el.backendActive.textContent =
-        names[via] + (via === 'remote' && state.backend.activeProvider ? `（${state.backend.activeProvider}）` : '');
+        (b ? backendName(b) : via) +
+        (via === 'remote' && state.backend.activeProvider ? `（${state.backend.activeProvider}）` : '');
     }
   }
 }
 
-/** 标题徽标：点击跳转官网（地址可在 config.js 的 site.officialSite 调整） */
+/**
+ * 标题徽标：点击跳转官网
+ * 地址取自 config.js 的 site.officialSite（由 lib/servers.js 生成）
+ */
 function initLogoLink() {
   const link = document.getElementById('logo-link');
   if (!link) return;
@@ -228,6 +411,8 @@ function initLogoLink() {
   if (typeof url === 'string' && /^https?:\/\//.test(url)) {
     link.setAttribute('href', url);
   }
+  link.setAttribute('title', t('ui.logoTitle'));
+  link.setAttribute('aria-label', t('ui.logoTitle'));
 }
 
 function renderBackendNote(text) {
@@ -243,12 +428,14 @@ let state = {
   loading: false,
   forceOnce: false,
   lastError: null,
+  lastData: null,
   source: 'server',
   serverClockOffset: 0,
   backend: {
     pref: { source: 'remote', provider: '' }, // 用户选择（默认远端 API）
     via: null, // 本次实际使用的数据来源
     activeProvider: null, // 远端模式下实际生效的接口
+    expandedRemote: false, // ① 的接口子选项是否展开
     notice: '', // 自动切换等提示
   },
 };
@@ -299,13 +486,19 @@ function renderOverall(data) {
   const overall = data.overall || 'partial';
   el.overall.dataset.status = overall;
   el.overall.classList.remove('loading');
-  el.overallText.textContent = data.overallText || STATUS_TEXT[overall] || '状态未知';
+  el.overallText.textContent = t(`overall.${overall}`);
 
-  const s = data.summary || {};
+  const sum = data.summary || {};
   const bits = [];
-  if (typeof s.endpointsOnline === 'number') bits.push(`入口 ${s.endpointsOnline}/${s.endpoints} 在线`);
-  if (typeof s.serversUp === 'number') bits.push(`服务器 ${s.serversUp}/${s.servers} 正常`);
-  if (typeof s.playersOnline === 'number' && s.playersOnline > 0) bits.push(`在线玩家 ${s.playersOnline}`);
+  if (typeof sum.endpointsOnline === 'number') {
+    bits.push(t('summary.endpoints', { online: sum.endpointsOnline, total: sum.endpoints }));
+  }
+  if (typeof sum.serversUp === 'number') {
+    bits.push(t('summary.servers', { up: sum.serversUp, total: sum.servers }));
+  }
+  if (typeof sum.playersOnline === 'number' && sum.playersOnline > 0) {
+    bits.push(t('summary.players', { n: sum.playersOnline }));
+  }
   el.overallSub.textContent = bits.join(' · ');
 }
 
@@ -319,22 +512,26 @@ function renderBeats(endpointId, history, limit, intervalMs) {
     .map((item, index) => {
       const isLast = index === slots.length - 1;
       if (!item) {
-        return `<div class="beat" title="暂无数据"></div>`;
+        return `<div class="beat" title="${escapeHtml(t('heartbeat.empty'))}"></div>`;
       }
       const cls = item.ok ? 'up' : 'down';
       const time = formatTimeShort(item.t);
       const latency = item.ms != null ? ` · ${item.ms} ms` : '';
-      const title = `${time} ${item.ok ? '在线' : '离线'}${latency}`;
+      const title = t('heartbeat.tip', {
+        time,
+        state: item.ok ? t('endpoint.online') : t('endpoint.offline'),
+        latency,
+      });
       return `<div class="beat ${cls}${isLast && item.ok ? ' now' : ''}" title="${escapeHtml(title)}"></div>`;
     })
     .join('');
 
   return `
     <div class="wrap">
-      <div class="hp-bar-big" role="img" aria-label="最近 ${limit} 次检查记录">${bars}</div>
+      <div class="hp-bar-big" role="img" aria-label="${escapeHtml(t('heartbeat.aria', { n: limit }))}">${bars}</div>
       <div class="word">
-        <div>${escapeHtml(humanDuration(limit * intervalMs))}前</div>
-        <div>现在</div>
+        <div>${escapeHtml(t('heartbeat.before', { time: humanDuration(limit * intervalMs) }))}</div>
+        <div>${escapeHtml(t('heartbeat.now'))}</div>
       </div>
     </div>`;
 }
@@ -376,25 +573,35 @@ function state_isLowAccuracy() {
 function renderEndpoint(ep, history, limit, intervalMs) {
   const state = ep.state || (ep.online ? 'online' : 'offline');
   const statusClass = state === 'online' ? 'up' : state === 'offline' ? 'down' : 'unknown';
-  const stateText = state === 'online' ? '在线' : state === 'offline' ? '离线' : '未验证';
+  const stateText = t(
+    state === 'online' ? 'endpoint.online' : state === 'offline' ? 'endpoint.offline' : 'endpoint.unknown'
+  );
   const metas = [];
 
   const lowAccuracy = ep.accuracy === 'low' || state_isLowAccuracy();
   if (state === 'online') {
-    if (ep.latency != null) metas.push(`<span>延迟 <span class="meta-strong">${ep.latency} ms</span></span>`);
-    if (ep.responseMs != null) {
-      metas.push(`<span>端口响应 <span class="meta-strong">${ep.responseMs} ms</span></span>`);
+    if (ep.latency != null) {
+      metas.push(`<span>${escapeHtml(t('endpoint.latency'))} <span class="meta-strong">${ep.latency} ms</span></span>`);
     }
-    if (ep.version) metas.push(`<span>版本 <span class="meta-strong">${escapeHtml(ep.version)}</span></span>`);
+    if (ep.responseMs != null) {
+      metas.push(
+        `<span>${escapeHtml(t('endpoint.response'))} <span class="meta-strong">${ep.responseMs} ms</span></span>`
+      );
+    }
+    if (ep.version) {
+      metas.push(
+        `<span>${escapeHtml(t('endpoint.version'))} <span class="meta-strong">${escapeHtml(ep.version)}</span></span>`
+      );
+    }
     if (ep.players && (ep.players.online != null || ep.players.max != null)) {
       const online = ep.players.online ?? '-';
       const max = ep.players.max ?? '-';
-      metas.push(`<span>玩家 <span class="meta-strong">${online}/${max}</span></span>`);
+      metas.push(`<span>${escapeHtml(t('endpoint.players'))} <span class="meta-strong">${online}/${max}</span></span>`);
     }
   } else if (state === 'offline') {
-    metas.push(`<span class="error-text">${escapeHtml(ep.message || '连接失败')}</span>`);
+    metas.push(`<span class="error-text">${escapeHtml(endpointMessage(ep))}</span>`);
   } else {
-    metas.push(`<span class="warn-text">${escapeHtml(ep.message || '暂时无法验证该线路状态')}</span>`);
+    metas.push(`<span class="warn-text">${escapeHtml(endpointMessage(ep))}</span>`);
   }
 
   const iconSrc = ep.iconData || (ep.hasIcon ? `/api/icon/${encodeURIComponent(ep.id)}?v=${ep.checkedAt || 0}` : null);
@@ -409,7 +616,7 @@ function renderEndpoint(ep, history, limit, intervalMs) {
             ${icon}
             <span class="badge kind-badge">${escapeHtml(ep.label)}</span>
             <span class="line-name"><span class="dot"></span>${stateText}</span>
-            ${lowAccuracy ? '<span class="accuracy-tag">结果可能不准确</span>' : ''}
+            ${lowAccuracy ? `<span class="accuracy-tag">${escapeHtml(t('endpoint.accuracyTag'))}</span>` : ''}
           </div>
           <div class="extra-info">${metas.join('')}</div>
           ${renderMotd(ep)}
@@ -424,7 +631,7 @@ function renderEndpoint(ep, history, limit, intervalMs) {
 /** 每个服务器下方的第三栏：玩家交流群（整张卡片均可点击跳转） */
 function renderGroupLink(server) {
   if (!server.qq || !server.qq.url) return '';
-  const title = server.qq.title || '点我加入玩家交流群';
+  const title = server.qq.title || t('qq.defaultTitle');
   return `
     <a class="item item-link" href="${escapeHtml(server.qq.url)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(
     title
@@ -432,10 +639,10 @@ function renderGroupLink(server) {
       <div class="row">
         <div class="col-left">
           <div class="info">
-            <span class="badge kind-badge qq-badge">QQ群</span>
+            <span class="badge kind-badge qq-badge">${escapeHtml(t('qq.badge'))}</span>
             <span class="group-link">${escapeHtml(title)}</span>
           </div>
-          <div class="extra-info"><span>点击卡片任意位置即可加入该服务器的玩家交流群</span></div>
+          <div class="extra-info"><span>${escapeHtml(t('qq.hint'))}</span></div>
         </div>
         <span class="link-arrow" aria-hidden="true">↗</span>
       </div>
@@ -454,13 +661,15 @@ function renderGroups(data) {
         .map((ep) => renderEndpoint(ep, history[ep.id], limit, intervalMs))
         .join('');
       const subtitle = server.subtitle ? ` · ${escapeHtml(server.subtitle)}` : '';
-      const unknownNote = server.unknownCount ? ` · ${server.unknownCount} 条线路未验证` : '';
+      const unknownNote = server.unknownCount ? t('summary.unknown', { n: server.unknownCount }) : '';
       return `
         <div class="group" data-server="${escapeHtml(server.id)}">
           <h2 class="group-title">
-            <span class="badge status-${statusClass}">${escapeHtml(STATUS_TEXT[statusClass] || '未知')}</span>
+            <span class="badge status-${statusClass}">${escapeHtml(STATUS_TEXT[statusClass] || STATUS_TEXT.unknown)}</span>
             <span class="group-name">${escapeHtml(server.name)}${subtitle}</span>
-            <span class="group-sub">${server.onlineCount}/${server.totalCount} 入口在线${unknownNote}</span>
+            <span class="group-sub">${escapeHtml(
+              t('summary.endpoints', { online: server.onlineCount, total: server.totalCount })
+            )}${escapeHtml(unknownNote)}</span>
           </h2>
           <div class="shadow-box monitor-list mt-4" data-status="${statusClass}">${items}${renderGroupLink(server)}</div>
         </div>`;
@@ -471,7 +680,7 @@ function renderGroups(data) {
 function renderFooter(data) {
   const ts = data.updatedAt ? new Date(data.updatedAt).getTime() : Date.now();
   state.updatedAt = ts;
-  el.lastUpdated.textContent = `最后更新于 ${formatDateTime(ts)}`;
+  el.lastUpdated.textContent = t('footer.updated', { time: formatDateTime(ts) });
 }
 
 function showNotice(message) {
@@ -484,18 +693,18 @@ function showNotice(message) {
   el.notice.classList.add('show');
 }
 
-/** 顶部说明数据来源：本地后端 / 远端 API */
+/** 顶部说明数据来源：本地后端 / 远端 API / 客户端简单 ping */
 function renderSource(data) {
   if (!el.sourceNote) return;
   if (data.source === 'remote') {
-    const name = data.sourceName ? escapeHtml(data.sourceName) : '第三方接口';
-    el.sourceNote.innerHTML = `数据由远端 API 代理探测（IPv4 / IPv6 均由网络节点查询，节点：${name}）`;
+    el.sourceNote.innerHTML = t('source.remote', { name: escapeHtml(data.sourceName || '—') });
   } else if (data.source === 'server') {
-    const backendName = (backendById('server') || {}).name || 'SGU物理机后端';
-    el.sourceNote.innerHTML = `数据由${escapeHtml(backendName)}实时探测（含延迟测量）`;
+    const b = backendById('server');
+    const v = t('backend.server.name');
+    const name = v === 'backend.server.name' ? (b ? b.name : 'SGU 物理机后端') : v;
+    el.sourceNote.innerHTML = t('source.server', { name: escapeHtml(name) });
   } else if (data.source === 'client') {
-    el.sourceNote.innerHTML =
-      '数据来自浏览器「简单 ping」（仅探测端口是否有响应，<strong>结果可能不准确</strong>，仅供参考）';
+    el.sourceNote.innerHTML = t('source.client');
   } else {
     el.sourceNote.textContent = '';
   }
@@ -514,7 +723,7 @@ function applyTheme(theme, persist) {
 
   const button = document.getElementById('theme-toggle');
   if (button) {
-    const nextLabel = theme === 'dark' ? '切换到浅色模式' : '切换到深色模式';
+    const nextLabel = theme === 'dark' ? t('ui.themeToLight') : t('ui.themeToDark');
     button.setAttribute('aria-label', nextLabel);
     button.setAttribute('title', nextLabel);
     button.setAttribute('aria-pressed', theme === 'dark' ? 'true' : 'false');
@@ -542,13 +751,13 @@ function initThemeToggle() {
 function tickCountdown() {
   const remain = state.nextUpdateAt - now();
   if (remain <= 0) {
-    el.countdown.textContent = '正在刷新…';
+    el.countdown.textContent = t('footer.refreshing');
     return;
   }
   const seconds = Math.floor(remain / 1000);
   const mm = pad2(Math.floor(seconds / 60));
   const ss = pad2(seconds % 60);
-  el.countdown.textContent = `将于 ${mm}:${ss} 后刷新`;
+  el.countdown.textContent = t('footer.countdown', { mm, ss });
 }
 
 /* ---------------- 数据获取 ---------------- */
@@ -619,9 +828,15 @@ async function fetchByBackend() {
   const blocked = chosen ? backendDisabledReason(chosen) : null;
   if (blocked) {
     const fallbackId = CONFIG.defaultBackend || 'remote';
-    state.backend.notice = `「${chosen.name}」当前不可用（${blocked}），已自动改用「${
-      (backendById(fallbackId) || {}).name || '远端 API'
-    }」。`;
+    const nameOf = (b) => {
+      const v = t(`backend.${b.id}.name`);
+      return v === `backend.${b.id}.name` ? b.name : v;
+    };
+    state.backend.notice = t('backend.notice.disabled', {
+      name: nameOf(chosen),
+      reason: blocked,
+      fallback: nameOf(backendById(fallbackId) || BACKENDS[0]),
+    });
     state.backend.pref = { source: fallbackId, provider: pref.provider };
     return fetchByBackend();
   }
@@ -641,7 +856,7 @@ async function fetchByBackend() {
       if (!provider) throw err;
       // 指定的接口不可用时，退回自动选择
       data = await fetchFromProbe(null);
-      errors.push(`${provider} 不可用，已改用其它接口`);
+      errors.push(t('backend.notice.providerFallback', { provider }));
     }
     if (!data.provider) {
       const first = (data.servers || [])
@@ -660,17 +875,17 @@ async function fetchByBackend() {
       const data = await window.SGUProbe.simplePingStatus();
       state.backend.via = 'client';
       state.backend.activeProvider = null;
-      state.backend.notice = '当前使用「客户端简单 ping」：只检测域名解析与端口是否有响应，结果可能不准确，仅供参考。';
+      state.backend.notice = t('backend.notice.clientMode');
       return Object.assign(data, { source: 'client' });
     } catch (err) {
       errors.push(`客户端简单 ping 失败（${err.message}）`);
-      state.backend.notice = `客户端简单 ping 不可用（${err.message}），已自动切换到远端 API。`;
+      state.backend.notice = t('backend.notice.clientFallback', { reason: err.message });
       const data = await tryRemote(null);
       return data;
     }
   }
   if (pref.source === 'client') {
-    state.backend.notice = `客户端简单 ping 暂不可用（${clientPingBlockReason()}），已自动切换到远端 API。`;
+    state.backend.notice = t('backend.notice.clientFallback', { reason: clientPingBlockReason() });
   }
 
   if (pref.source === 'server') {
@@ -682,9 +897,9 @@ async function fetchByBackend() {
         errors.push(`远端 API 也不可用（${e.message}）`);
         throw new Error(errors.join('；'));
       });
-      state.backend.notice = `本地后端未运行或无法访问，已自动切换为远端 API${
-        data.provider ? `（${data.provider}）` : ''
-      }。`;
+      state.backend.notice = t('backend.notice.fallbackServer', {
+        provider: data.provider ? `（${data.provider}）` : '',
+      });
       return data;
     }
   }
@@ -698,7 +913,7 @@ async function fetchByBackend() {
     if (MODE !== 'static') {
       try {
         const data = await tryServer();
-        state.backend.notice = '远端 API 不可用，已自动改用本地后端。';
+        state.backend.notice = t('backend.notice.fallbackRemote');
         return data;
       } catch (e) {
         errors.push(`本地后端也不可用（${e.message}）`);
@@ -729,6 +944,7 @@ async function loadStatus(options = {}) {
     // 兜底：若服务端给出的刷新时刻已过，避免陷入每秒请求的死循环
     state.nextUpdateAt = Math.max(next, now() + 1000);
     state.lastError = null;
+    state.lastData = data;
     state.source = data.source || 'server';
 
     renderOverall(data);
@@ -739,7 +955,7 @@ async function loadStatus(options = {}) {
     renderBackendNote(state.backend.notice);
     // 本机（自建后端）没有 IPv6 出口时给出明确提示，避免把探测端问题误读为服务器掉线
     if (data.hostIpv6 === false) {
-      showNotice('当前探测端（本机）没有 IPv6 网络，IPv6 线路无法验证，已标记为「未验证」而非离线。');
+      showNotice(t('notice.hostNoIpv6'));
     } else {
       showNotice('');
     }
@@ -748,9 +964,9 @@ async function loadStatus(options = {}) {
     el.overall.dataset.status = 'unknown';
     el.overall.classList.remove('loading');
     el.overallText.textContent = '状态获取失败';
-    showNotice(`无法获取服务器状态（${err.message}），将在 30 秒后重试。`);
+    showNotice(t('notice.fetchFailed', { msg: err.message }));
     renderBackendCard();
-    renderBackendNote('所有数据来源都不可用，请检查网络，或在页面底部切换“后端选择”。');
+    renderBackendNote(t('backend.notice.allDown'));
     state.nextUpdateAt = Date.now() + 30 * 1000;
   } finally {
     state.loading = false;
@@ -777,6 +993,8 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
+applyStaticI18n();
+initLangPicker();
 tickCountdown();
 initThemeToggle();
 initLogoLink();

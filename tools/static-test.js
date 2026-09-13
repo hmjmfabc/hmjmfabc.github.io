@@ -39,6 +39,30 @@ function parseInputs(html) {
   return out;
 }
 
+function parseButtons(html) {
+  const out = [];
+  const re = /<button\b([^>]*)>/g;
+  let m;
+  while ((m = re.exec(html))) {
+    const attrs = {};
+    const attrRe = /([a-zA-Z-]+)(?:="([^"]*)")?/g;
+    let a;
+    while ((a = attrRe.exec(m[1]))) attrs[a[1]] = a[2] === undefined ? true : a[2];
+    out.push({
+      attrs,
+      handlers: {},
+      addEventListener(type, fn) { this.handlers[type] = fn; },
+      getAttribute(name) {
+        return Object.prototype.hasOwnProperty.call(attrs, name) ? attrs[name] : null;
+      },
+      click() {
+        if (this.handlers.click) this.handlers.click({ preventDefault() {}, stopPropagation() {}, target: this });
+      },
+    });
+  }
+  return out;
+}
+
 function makeEl(id) {
   const el = {
     id,
@@ -48,6 +72,7 @@ function makeEl(id) {
     textContent: '',
     _html: '',
     _inputs: [],
+    _buttons: [],
     handlers: {},
     classList: {
       _s: new Set(),
@@ -63,12 +88,14 @@ function makeEl(id) {
     querySelectorAll(sel) {
       const m = /input\[name="([^"]+)"\]/.exec(sel);
       if (m) return (el._inputs || []).filter((i) => i.name === m[1]);
+      const cls = /^\.([a-zA-Z-]+)$/.exec(sel);
+      if (cls) return (el._buttons || []).filter((b) => String(b.attrs.class || '').split(/\s+/).includes(cls[1]));
       return [];
     },
   };
   Object.defineProperty(el, 'innerHTML', {
     get() { return el._html; },
-    set(v) { el._html = String(v); el._inputs = parseInputs(el._html); },
+    set(v) { el._html = String(v); el._inputs = parseInputs(el._html); el._buttons = parseButtons(el._html); },
   });
   return el;
 }
@@ -77,6 +104,7 @@ const els = {};
 const htmlEl = makeEl('html');
 htmlEl.setAttribute('data-theme', 'light');
 const storage = new Map();
+storage.set('sgu-lang', 'zh-CN'); // 固定语言，保证断言稳定（Node 的 navigator.language 为 en-US）
 
 const sandbox = {
   console,
@@ -116,9 +144,11 @@ const sandbox = {
   AbortController: globalThis.AbortController,
   document: {
     hidden: false,
+    title: '',
     documentElement: htmlEl,
     getElementById: (id) => els[id] || (els[id] = makeEl(id)),
     querySelector: () => null,
+    querySelectorAll: () => [],
     addEventListener() {},
   },
 };
@@ -126,7 +156,7 @@ sandbox.window = sandbox;
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
 
-for (const file of ['config.js', 'motd.js', 'probe.js', 'app.js']) {
+for (const file of ['config.js', 'i18n.js', 'motd.js', 'probe.js', 'app.js']) {
   vm.runInContext(fs.readFileSync(path.join(PUB, file), 'utf8'), sandbox, { filename: file });
 }
 

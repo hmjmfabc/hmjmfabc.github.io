@@ -89,6 +89,83 @@ body {
 
 a { color: var(--accent); }
 
+/* ---------------- 语言切换（最右上角，主题按钮左侧） ---------------- */
+
+.lang-toggle {
+  position: fixed;
+  top: 12px;
+  right: 60px;
+  z-index: 900;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 40px;
+  height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--card-bg);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition: transform 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.lang-toggle:hover { transform: scale(1.05); color: var(--accent); border-color: var(--accent); }
+.lang-toggle:active { transform: scale(0.96); }
+.lang-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.lang-toggle svg { width: 17px; height: 17px; display: block; }
+
+.lang-menu {
+  position: fixed;
+  top: 58px;
+  right: 12px;
+  z-index: 950;
+  min-width: 190px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card-bg);
+  box-shadow: var(--shadow);
+}
+
+.lang-menu[hidden] { display: none; }
+
+.lang-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.lang-item:hover { background: var(--hover); }
+
+.lang-item.is-active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.lang-item-short {
+  font-size: 11px;
+  font-weight: 700;
+  opacity: 0.65;
+}
+
 /* ---------------- 主题切换按钮（页面最右上角） ---------------- */
 
 .theme-toggle {
@@ -623,6 +700,37 @@ html[data-theme="dark"] .backend-tag.tag-warn { background: rgba(248, 163, 6, 0.
 .backend-tag.tag-warn { background: rgba(248, 163, 6, 0.16); color: #9a6400; }
 .backend-tag.tag-live { background: rgba(47, 180, 106, 0.15); color: var(--up); }
 
+.backend-subwrap { margin-top: 8px; }
+
+.backend-subtoggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border: 1px solid var(--border);
+  border-radius: 50rem;
+  background: var(--card-bg);
+  color: var(--text);
+  font-size: 12.5px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+}
+
+.backend-subtoggle:hover { border-color: var(--accent); color: var(--accent); background: var(--hover); }
+.backend-subtoggle:disabled { opacity: 0.55; cursor: not-allowed; }
+.backend-subtoggle .caret { display: inline-block; transition: transform 0.15s ease; font-size: 11px; }
+.backend-subtoggle[aria-expanded="true"] .caret { transform: rotate(90deg); }
+
+.backend-subcurrent {
+  padding: 1px 7px;
+  border-radius: 50rem;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
 .backend-suboptions {
   display: flex;
   flex-direction: column;
@@ -631,6 +739,8 @@ html[data-theme="dark"] .backend-tag.tag-warn { background: rgba(248, 163, 6, 0.
   padding-left: 2px;
   border-left: 2px solid var(--border);
 }
+
+.backend-suboptions[hidden] { display: none; }
 
 .backend-suboption {
   display: flex;
@@ -725,6 +835,8 @@ footer .footer-copyright {
   .container { padding: 14px 12px 30px; }
   .title-flex { font-size: 21px; gap: 10px; padding-right: 48px; }
   .theme-toggle { top: 8px; right: 8px; width: 36px; height: 36px; }
+  .lang-toggle { top: 8px; right: 52px; height: 36px; min-width: 36px; padding: 0 8px; font-size: 12px; }
+  .lang-menu { top: 50px; right: 8px; min-width: 168px; }
   .title-flex .logo { width: 38px; height: 38px; border-radius: 9px; }
   .overall-status { font-size: 19px; padding: 14px 16px !important; }
   .overall-status .overall-sub { display: none; }

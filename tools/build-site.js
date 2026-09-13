@@ -33,7 +33,7 @@ function resolveDomain() {
   return 'status.yunmc.icu';
 }
 const DOMAIN = resolveDomain();
-const ASSETS = ['style.css', 'app.js', 'config.js', 'motd.js', 'probe.js', 'logo.png', 'favicon.png'];
+const ASSETS = ['style.css', 'app.js', 'config.js', 'i18n.js', 'motd.js', 'probe.js', 'logo.png', 'favicon.png'];
 
 function argValue(name) {
   const hit = process.argv.find((a) => a.startsWith(`--${name}=`));

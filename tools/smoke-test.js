@@ -65,6 +65,32 @@ function parseInputs(html) {
   return out;
 }
 
+function parseButtons(html) {
+  const out = [];
+  const re = /<button\b([^>]*)>/g;
+  let m;
+  while ((m = re.exec(html))) {
+    const attrs = {};
+    const attrRe = /([a-zA-Z-]+)(?:="([^"]*)")?/g;
+    let a;
+    while ((a = attrRe.exec(m[1]))) attrs[a[1]] = a[2] === undefined ? true : a[2];
+    out.push({
+      attrs,
+      handlers: {},
+      addEventListener(type, fn) { this.handlers[type] = fn; },
+      getAttribute(name) {
+        return Object.prototype.hasOwnProperty.call(attrs, name) ? attrs[name] : null;
+      },
+      click() {
+        if (this.handlers.click) {
+          this.handlers.click({ preventDefault() {}, stopPropagation() {}, target: this });
+        }
+      },
+    });
+  }
+  return out;
+}
+
 function makeEl(id) {
   const el = {
     id,
@@ -74,6 +100,7 @@ function makeEl(id) {
     textContent: '',
     _html: '',
     _inputs: [],
+    _buttons: [],
     handlers: {},
     classList: {
       _s: new Set(),
@@ -89,12 +116,14 @@ function makeEl(id) {
     querySelectorAll(sel) {
       const m = /input\[name="([^"]+)"\]/.exec(sel);
       if (m) return (el._inputs || []).filter((i) => i.name === m[1]);
+      const cls = /^\.([a-zA-Z-]+)$/.exec(sel);
+      if (cls) return (el._buttons || []).filter((b) => String(b.attrs.class || '').split(/\s+/).includes(cls[1]));
       return [];
     },
   };
   Object.defineProperty(el, 'innerHTML', {
     get() { return el._html; },
-    set(v) { el._html = String(v); el._inputs = parseInputs(el._html); },
+    set(v) { el._html = String(v); el._inputs = parseInputs(el._html); el._buttons = parseButtons(el._html); },
   });
   return el;
 }
@@ -141,7 +170,7 @@ function expectServerStatus(endpoints) {
 }
 
 (async () => {
-  console.log(`\n[1/8] 拉取状态接口 ${BASE}/api/status`);
+  console.log(`\n[1/9] 拉取状态接口 ${BASE}/api/status`);
   const data = await fetchJson(`${BASE}/api/status`);
   check(data.ok === true, '接口返回 ok');
   check(data.servers && data.servers.length === 3, `监测服务器数量为 3（实际 ${data.servers && data.servers.length}）`);
@@ -154,7 +183,7 @@ function expectServerStatus(endpoints) {
   check(endpoints.filter((e) => e.kind === 'ipv6').length === 3, 'IPv6 入口 3 个');
   check(endpoints.filter((e) => e.kind === 'ipv4').every((e) => e.srv === true), '全部 IPv4 入口均标记为 SRV 解析');
 
-  console.log('\n[2/8] 校验状态聚合规则');
+  console.log('\n[2/9] 校验状态聚合规则');
   for (const server of data.servers) {
     const expected = expectServerStatus(server.endpoints);
     const detail = server.endpoints
@@ -174,15 +203,17 @@ function expectServerStatus(endpoints) {
   warn(data.hostIpv6 !== false || data.summary.endpointsUnknown > 0, '探测端无 IPv6 时，IPv6 线路被标记为「未验证」而非离线');
   warn(data.hostIpv6 === false || data.summary.endpointsUnknown === 0, '探测端有 IPv6 时，所有线路均得到确定状态');
 
-  console.log('\n[3/8] 前端渲染测试（极简 DOM 桩）');
+  console.log('\n[3/9] 前端渲染测试（极简 DOM 桩）');
   const els = {};
   const htmlEl = makeEl('html');
   htmlEl.setAttribute('data-theme', 'light');
   global.document = {
     hidden: false,
+    title: '',
     documentElement: htmlEl,
     getElementById: (id) => els[id] || (els[id] = makeEl(id)),
     querySelector: () => null,
+    querySelectorAll: () => [],
     addEventListener() {},
   };
   global.localStorage = makeStorage();
@@ -193,8 +224,12 @@ function expectServerStatus(endpoints) {
   global.fetch = async () => ({ ok: true, status: 200, json: async () => data });
 
   // 真实页面会先加载 config.js / motd.js / probe.js，这里保持一致（probe.js 因涉及网络请求不加载）
+  // 固定语言，保证断言稳定（Node 的 navigator.language 是 en-US）
+  global.localStorage.setItem('sgu-lang', 'zh-CN');
   eval(fs.readFileSync(path.join(__dirname, '..', 'public', 'config.js'), 'utf8'));
+  eval(fs.readFileSync(path.join(__dirname, '..', 'public', 'i18n.js'), 'utf8'));
   const CONFIG_SITE = global.SGU_CONFIG && global.SGU_CONFIG.site;
+  const I18N = global.SGUI18n;
   const code = fs.readFileSync(path.join(__dirname, '..', 'public', 'app.js'), 'utf8');
   eval(code);
   await new Promise((r) => setTimeout(r, 500));
@@ -211,7 +246,7 @@ function expectServerStatus(endpoints) {
   check(/^将于 \d{2}:\d{2} 后刷新$/.test(els['countdown-text'].textContent), `页脚显示刷新倒计时（${els['countdown-text'].textContent}）`);
   check(els.overall.dataset.status === data.overall, '顶部总览状态与接口一致');
 
-  console.log('\n[4/8] 检查隐藏 IP、彩色 MOTD、交流群第三栏与页脚');
+  console.log('\n[4/9] 检查隐藏 IP、彩色 MOTD、交流群第三栏与页脚');
   const page = await fetchText(`${BASE}/`);
   const css = await fetchText(`${BASE}/style.css`);
   const ipPattern = /\b(?:\d{1,3}\.){3}\d{1,3}\b/;
@@ -253,7 +288,7 @@ function expectServerStatus(endpoints) {
   check(expectedTitles.length === 3 && hrefs[0] === data.servers[0].qq.url && hrefs[1] === data.servers[1].qq.url && hrefs[2] === data.servers[2].qq.url, '交流群链接顺序与服务器顺序一致');
   check(/target="_blank" rel="noopener noreferrer"/.test(html), '交流群链接使用安全的新窗口打开方式');
 
-  console.log('\n[5/8] 校验标题徽标跳转官网');
+  console.log('\n[5/9] 校验标题徽标跳转官网');
   const logoAnchor = /<a class="logo-wrapper logo-link"[^>]*>/.exec(page);
   check(!!logoAnchor, '标题徽标已改为可点击链接');
   check(!!logoAnchor && /href="https:\/\/swordsman\.top\/"/.test(logoAnchor[0]), `徽标指向官网（${logoAnchor ? /href="([^"]*)"/.exec(logoAnchor[0])[1] : '未找到'}）`);
@@ -267,14 +302,17 @@ function expectServerStatus(endpoints) {
   );
   check(els['logo-link'] !== undefined, '前端已绑定徽标链接元素');
 
-  check(/<div class="footer-copyright">Copyright © 剑客群组服 2024～2026<\/div>/.test(page), '页脚第一行为版权信息');
+  check(
+    /<div class="footer-copyright"[^>]*>Copyright © 剑客群组服 2024～2026<\/div>/.test(page),
+    '页脚第一行为版权信息'
+  );
   check(/footer\s*\{[^}]*text-align:\s*center/.test(css), '页脚整体居中');
   check(/footer \.footer-copyright\s*\{[^}]*color:\s*var\(--copyright\)/.test(css), '版权行颜色跟随主题变量');
   check(/--copyright:\s*#000000/i.test(css), '浅色（默认）模式下版权行为黑色');
   check(/footer \.footer-copyright\s*\{[^}]*font-size:\s*1[5-9]px/.test(css), '版权行字号大于其它页脚文字');
   check(/id="last-updated"/.test(page) && /id="countdown-text"/.test(page), '页脚保留最后更新时间与刷新倒计时两行');
 
-  console.log('\n[6/8] 校验页面底部的“后端选择”卡片');
+  console.log('\n[6/9] 校验页面底部的“后端选择”卡片');
   const backendHtml = els['backend-options'].innerHTML;
   check(/id="backend-card"/.test(page), '页面存在“后端选择”卡片');
   check((page.match(/后端选择/g) || []).length >= 1, '卡片标题为「后端选择」');
@@ -326,7 +364,78 @@ function expectServerStatus(endpoints) {
     check(saved2.provider === first.value, `选择子接口后写入 localStorage（${saved2.provider}）`);
   }
 
-  console.log('\n[7/8] 校验静态资源缓存策略（防止浏览器继续使用旧页面）');
+  console.log('\n[7/9] 校验多语言与折叠式子选项');
+  // 语言按钮与菜单
+  check(/id="lang-toggle"/.test(page) && /id="lang-menu"/.test(page), '页面存在语言切换按钮与菜单');
+  check(/id="lang-current"/.test(page), '按钮显示当前语言简称');
+  const langs = (I18N && I18N.LANGS) || [];
+  check(langs.length === 5, `共 5 种语言（实际 ${langs.length}）`);
+  const langLabels = langs.map((l) => l.label).join(',');
+  check(
+    ['简体中文', '繁體中文', 'English', '文言（华夏）', '日本語'].every((x) => langLabels.includes(x)),
+    `语言列表完整：${langLabels}`
+  );
+  check(
+    ['zh-CN', 'zh-TW', 'en', 'lzh', 'ja'].every((c) => I18N.DICT[c] && Object.keys(I18N.DICT[c]).length >= 80),
+    `每种语言都有完整词条（各 ${Object.keys(I18N.DICT['zh-CN']).length} 条）`
+  );
+  check(I18N.getLang() === 'zh-CN', `测试环境语言为简体中文（${I18N.getLang()}）`);
+
+  // 折叠式接口子选项：默认收起
+  const backendHtmlNow = els['backend-options'].innerHTML;
+  check(/class="backend-suboptions"\s+hidden/.test(backendHtmlNow), '选项①的探测接口列表默认折叠');
+  check(/class="backend-subtoggle"/.test(backendHtmlNow), '存在展开按钮');
+  check(/backend-subcurrent/.test(backendHtmlNow), '展开按钮上显示当前接口');
+  {
+    const toggles = els['backend-options'].querySelectorAll('.backend-subtoggle');
+    check(toggles.length === 1, `共 1 个展开按钮（实际 ${toggles.length}）`);
+    if (toggles.length) {
+      check(toggles[0].attrs['aria-expanded'] === 'false', '默认 aria-expanded=false');
+      toggles[0].click();
+      const expandedHtml = els['backend-options'].innerHTML;
+      check(!/class="backend-suboptions"\s+hidden/.test(expandedHtml), '点击后接口列表展开');
+      check(
+        els['backend-options'].querySelectorAll('.backend-subtoggle')[0].attrs['aria-expanded'] === 'true',
+        '展开后 aria-expanded=true'
+      );
+      // 再点一次收起
+      els['backend-options'].querySelectorAll('.backend-subtoggle')[0].click();
+      check(/class="backend-suboptions"\s+hidden/.test(els['backend-options'].innerHTML), '再次点击收起');
+    }
+  }
+
+  // 切换语言：点击菜单项，界面文案应整体切换
+  {
+    const items = els['lang-menu'].querySelectorAll('.lang-item');
+    check(items.length === 5, `语言菜单渲染 5 项（实际 ${items.length}）`);
+    const clickLang = (code) => {
+      const list = els['lang-menu'].querySelectorAll('.lang-item');
+      const item = list.find((i) => i.attrs['data-lang'] === code);
+      if (item) item.click();
+      return !!item;
+    };
+    check(clickLang('en'), '可点击切换到 English');
+    check(/All services|Some services/.test(els['overall-text'].textContent), `总览文案已变英文（${els['overall-text'].textContent}）`);
+    check(/Last updated/.test(els['last-updated'].textContent), `页脚已变英文（${els['last-updated'].textContent}）`);
+    check(htmlEl.getAttribute('lang') === 'en', `<html lang> 已更新（${htmlEl.getAttribute('lang')}）`);
+
+    clickLang('ja');
+    check(/正常|異常|停止|判定/.test(els['overall-text'].textContent), `总览文案已变日文（${els['overall-text'].textContent}）`);
+    check(/最終更新/.test(els['last-updated'].textContent), `页脚已变日文（${els['last-updated'].textContent}）`);
+
+    clickLang('zh-TW');
+    check(/服務|異常|正常/.test(els['overall-text'].textContent), `总览文案已变繁體（${els['overall-text'].textContent}）`);
+
+    clickLang('lzh');
+    check(/諸務|咸寧|有闕|盡絕|未可考/.test(els['overall-text'].textContent), `总览文案已变文言（${els['overall-text'].textContent}）`);
+    check(/末次更於/.test(els['last-updated'].textContent), `页脚已变文言（${els['last-updated'].textContent}）`);
+
+    clickLang('zh-CN');
+    check(/所有服务|部分服务/.test(els['overall-text'].textContent), `切回简体（${els['overall-text'].textContent}）`);
+    check(global.localStorage.getItem('sgu-lang') === 'zh-CN', '语言选择写入 localStorage');
+  }
+
+  console.log('\n[8/9] 校验静态资源缓存策略（防止浏览器继续使用旧页面）');
   check(/style\.css\?v=[0-9a-z]+/.test(page), 'CSS 引用带版本号');
   check(/app\.js\?v=[0-9a-z]+/.test(page), 'JS 引用带版本号');
   check(!/href="style\.css"/.test(page) && !/src="app\.js"/.test(page), '不存在无版本号的资源引用');
@@ -345,7 +454,7 @@ function expectServerStatus(endpoints) {
   check(version.ok === true && typeof version.assetVersion === 'string', `资源版本接口可用（${version.assetVersion}）`);
   check(page.includes(version.assetVersion), '页面资源版本与接口一致');
 
-  console.log('\n[8/8] 校验深色模式与右上角切换按钮');
+  console.log('\n[9/9] 校验深色模式与右上角切换按钮');
   check(/<button id="theme-toggle"/.test(page), '页面存在主题切换按钮');
   check(/class="icon-sun"/.test(page) && /class="icon-moon"/.test(page), '按钮含太阳 / 月亮两个图标');
   const toggleRule = /\.theme-toggle\s*\{([^}]*)\}/.exec(css);
