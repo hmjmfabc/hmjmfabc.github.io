@@ -162,9 +162,53 @@ _github-pages-challenge-mingyu-games-wmjbfs.swordsman.top  TXT  ae1fdf3183d1f432
 - 域名验证后，**只有该账号名下的仓库**可以把 Pages 站点发布到该域名**及其一级子域**；
 - 若要验证一个「已被其他用户验证过的域名」，释放流程**不会成功**。
 
-因此 `status.swordsman.top` 无法在本账号下使用。可选方案：
+因此 `status.swordsman.top` 无法在 `hmjmfabc` 账号下使用。
 
-1. **继续用 `status.yunmc.icu`**（当前方案，已可用）；
-2. 若 `mingyu-games-wmjbfs` 也是你们自己的账号：直接把本站部署到那个账号下，
-   或在那个账号的 Settings → Pages 里移除已验证域名后，再由本账号重新验证；
-3. 换一个未被验证的域名。
+> `swordsman.top` 根域正是**剑客群组服官网**（标题：剑客群组服 - 一群学生联手创建的永久公益MC服务器），
+> 托管在 `mingyu-games-wmjbfs` 账号下，**不要动它的验证设置**，否则官网会掉线。
+
+### 当前决定（2026-09）
+
+**继续使用 `https://status.yunmc.icu/`**，暂不切换域名。
+
+### 将来若要用 `status.swordsman.top`：给管理员的操作清单
+
+因为验证权在 `mingyu-games-wmjbfs` 名下，需要用**那个账号名下的仓库**来发布。
+推荐做法（不影响现有官网）：
+
+**管理员需要做的（约 3 分钟）**
+
+1. 用 `mingyu-games-wmjbfs` 登录 GitHub，新建一个**公开**仓库（名称随意，例如 `sgu-status`）。
+2. 在仓库 **Settings → Collaborators** 里把 `hmjmfabc` 添加为协作者（这样我们就能直接推送代码，
+   不需要把账号密码交给任何人）。
+3. 等代码推送完成后，在 **Settings → Pages → Source** 选择 **GitHub Actions**，
+   然后在 **Custom domain** 填入 `status.swordsman.top` 并 Save。
+4. 等 DNS 生效后勾选 **Enforce HTTPS**。
+
+**我们这边需要做的**
+
+1. 把远端指向新仓库并推送：
+   ```bash
+   cd /data/data/com.termux/files/home/Web
+   git remote add sgu https://github.com/mingyu-games-wmjbfs/sgu-status.git
+   git push sgu main
+   ```
+2. 构建时把 CNAME 换成目标域名（构建脚本已支持 `SITE_DOMAIN` 环境变量）：
+   ```bash
+   SITE_DOMAIN=status.swordsman.top node tools/build-site.js
+   ```
+
+**DNS（阿里云域名控制台，`swordsman.top` 的记录列表里添加）**
+
+| 类型 | 主机记录 | 记录值 | TTL |
+| --- | --- | --- | --- |
+| CNAME | `status` | `mingyu-games-wmjbfs.github.io` | 600 |
+
+**不推荐的替代做法**：让管理员在 `mingyu-games-wmjbfs` 里移除 `swordsman.top` 的域名验证，
+再由 `hmjmfabc` 重新验证 —— 验证权转移后，`mingyu-games-wmjbfs.github.io` 将**无法**再使用
+`swordsman.top`，**官网会掉线**，除非官网也一并迁移。
+
+**另一条路（不经过 GitHub Pages）**：GitHub 的域名验证限制只约束 GitHub Pages。
+把 `status` 这条 DNS 记录指向其它托管（Cloudflare Pages、Vercel，或备案完成后的 SGU 物理机）
+完全不受此限制。结合备案进度（预计 2027 年 1 月完成，地址 `ipv6.swordsman.top:8787`），
+届时也可以直接让 `status.swordsman.top` 指向物理机。
