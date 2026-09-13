@@ -327,9 +327,14 @@ function expectServerStatus(endpoints) {
   }
 
   console.log('\n[7/8] 校验静态资源缓存策略（防止浏览器继续使用旧页面）');
-  check(/\/style\.css\?v=[0-9a-z]+/.test(page), 'CSS 引用带版本号');
-  check(/\/app\.js\?v=[0-9a-z]+/.test(page), 'JS 引用带版本号');
-  check(!/href="\/style\.css"/.test(page) && !/src="\/app\.js"/.test(page), '不存在无版本号的资源引用');
+  check(/style\.css\?v=[0-9a-z]+/.test(page), 'CSS 引用带版本号');
+  check(/app\.js\?v=[0-9a-z]+/.test(page), 'JS 引用带版本号');
+  check(!/href="style\.css"/.test(page) && !/src="app\.js"/.test(page), '不存在无版本号的资源引用');
+  // 资源使用相对路径：无论部署在自定义域根目录还是仓库子路径都能正常加载
+  check(
+    !/(href|src)="\/(style\.css|app\.js|config\.js|motd\.js|probe\.js|logo\.png|favicon\.png)/.test(page),
+    '资源使用相对路径（兼容仓库子路径部署）'
+  );
   for (const asset of ['/style.css', '/app.js', '/']) {
     const { headers } = await fetchHeaders(`${BASE}${asset}`);
     const cache = String(headers['cache-control'] || '');

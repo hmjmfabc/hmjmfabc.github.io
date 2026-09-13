@@ -19,8 +19,21 @@ const { execFileSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
 const PUBLIC_DIR = path.join(ROOT, 'public');
-const DOMAIN = process.env.SITE_DOMAIN || 'status.yunmc.icu';
-const ASSETS = ['/style.css', '/app.js', '/config.js', '/motd.js', '/probe.js', '/logo.png', '/favicon.png'];
+// CNAME 取值优先级：--domain 参数 > SITE_DOMAIN 环境变量 > 按仓库名匹配 > 默认值
+const DOMAIN_BY_REPO = {
+  'hmjmfabc/hmjmfabc.github.io': 'status.yunmc.icu',
+  'mingyu-games-wmjbfs/status-swordsman.github.io': 'status.swordsman.top',
+};
+function resolveDomain() {
+  const fromArg = argValue('domain');
+  if (fromArg) return fromArg;
+  if (process.env.SITE_DOMAIN) return process.env.SITE_DOMAIN;
+  const repo = process.env.GITHUB_REPOSITORY;
+  if (repo && DOMAIN_BY_REPO[repo]) return DOMAIN_BY_REPO[repo];
+  return 'status.yunmc.icu';
+}
+const DOMAIN = resolveDomain();
+const ASSETS = ['style.css', 'app.js', 'config.js', 'motd.js', 'probe.js', 'logo.png', 'favicon.png'];
 
 function argValue(name) {
   const hit = process.argv.find((a) => a.startsWith(`--${name}=`));
