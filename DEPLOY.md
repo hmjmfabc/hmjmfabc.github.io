@@ -2,10 +2,10 @@
 
 目标：把本站部署到 GitHub Pages，通过自定义域名 **https://status.swordsman.top** 访问。
 
-- GitHub 账号 / 仓库：`hmjmfabc/hmjmfabc.github.io`（用户主页仓库，默认地址 `hmjmfabc.github.io`）
-- 自定义域名：`status.swordsman.top`
-- 发布目录：**`docs/`**（由 `tools/build-site.js` 从 `public/` 构建而来，随仓库一起提交）
-- Pages 设置：**Deploy from a branch → `main` → `/docs`**
+- GitHub 账号 / 仓库：`hmjmfabc/hmjmfabc.github.io`
+- 正式访问地址：**https://status.yunmc.icu/** （Pages 已配置的自定义域名，`hmjmfabc.github.io` 会跳转到它）
+- 发布方式：**GitHub Actions**（`.github/workflows/pages.yml`，构建 `dist/` 后发布；已实测成功）
+- `docs/` 目录：同样的静态产物，作为「Deploy from a branch → main /docs」的备用方案，当前未被使用
 
 > **重要前提**：GitHub Pages 只能托管静态文件、无法运行 Node 后端。
 > 因此线上版本使用**浏览器直连探测**：由访客的浏览器完成
@@ -19,28 +19,23 @@
 
 | 项目 | 状态 |
 | --- | --- |
-| 代码推送 | ✅ 已完成，`main` 分支已同步 |
-| `docs/` 发布目录 | ✅ 已构建并提交 |
-| Pages 发布目录设置 | ⚠️ **需要你改成 `/docs`**（当前是 `/ (root)`，导致 Jekyll 把 `README.md` 渲染成首页） |
-| DNS 解析 | ⚠️ `status.swordsman.top` 尚未解析，需要你添加 CNAME |
-| 自定义域名 / HTTPS | ⚠️ 待 DNS 生效后设置 |
+| 代码推送 | ✅ 已同步 `main` 分支 |
+| Pages 构建方式 | ✅ GitHub Actions（构建类型 `workflow`，最近几次运行均为 success） |
+| 自定义域名 | ✅ `status.yunmc.icu`，DNS 已解析到 GitHub Pages，站点可访问 |
+| HTTPS | ✅ 已启用（`https://status.yunmc.icu/` 正常返回 200） |
+| `status.swordsman.top` | ⛔ 无法使用：该域名已被另一个 GitHub 账号（`mingyu-games-wmjbfs`）通过 TXT 记录完成**域名验证**，GitHub 规定「验证域名后其**所有一级子域**都归属该账号」，因此本账号添加时会提示“域名属于其他用户”。详见文末说明。 |
 
-### ⚠️ 需要你做的第 1 件事：把 Pages 发布目录改成 `/docs`
+### 当前发布流程（无需再手动操作）
 
-仓库页面 → **Settings** → 左侧 **Pages** → “Build and deployment”：
+代码推送到 `main` 后，GitHub Actions 会自动执行：
 
-1. **Source** 保持 **Deploy from a branch**
-2. **Branch** 选 **`main`**，右侧文件夹下拉从 **`/ (root)`** 改成 **`/docs`**
-3. 点 **Save**
+1. `node tools/build-site.js --version=<commit sha>` —— 由 `lib/servers.js` 重新生成 `public/config.js`，
+   把 `public/` 复制到 `dist/`，并给资源加上版本号（避免浏览器缓存旧文件）
+2. 写入 `dist/CNAME`（`status.yunmc.icu`）与 `dist/.nojekyll`
+3. 上传 artifact 并发布到 GitHub Pages
 
-保存后等 1 分钟左右，访问 <https://hmjmfabc.github.io/> 就应该显示状态监测页面
-（而不是现在的 README 页面）。
-
-> 为什么之前显示成 README？因为发布目录是仓库根目录，而根目录没有 `index.html`，
-> GitHub Pages 自带的 Jekyll 就把 `README.md` 渲染成了首页。
-> `docs/` 目录里带有 `.nojekyll`，Jekyll 会被跳过，页面按原样发布。
-
----
+可在仓库 **Actions** 标签查看「部署到 GitHub Pages」的运行记录，或访问
+<https://status.yunmc.icu/> 验证。
 
 ## 二、需要你做的第 2 件事：DNS 与自定义域名
 
@@ -150,3 +145,26 @@ A：说明运行后端的那台设备当前没有 IPv6 网络（`ip -6 addr` 为
 A：把前端配置 `public/config.js` 里的 `mode` 改成 `server`，
 并把 `apiBase` 填成你自己后端的公网地址（需要 HTTPS 且已开启 CORS）。
 本仓库的 Node 后端默认已带 `Access-Control-Allow-Origin: *`。
+
+---
+
+## 关于 status.swordsman.top
+
+`swordsman.top` 目前由另一个 GitHub 账号 `mingyu-games-wmjbfs` 使用：
+根域名解析到 `mingyu-games-wmjbfs.github.io`，且 DNS 中存在验证记录
+
+```
+_github-pages-challenge-mingyu-games-wmjbfs.swordsman.top  TXT  ae1fdf3183d1f4323c116d73d5d7fc
+```
+
+按 GitHub 官方文档（[Verifying your custom domain for GitHub Pages](https://docs.github.com/en/pages/configuring-a-custom-domain-for-your-github-pages-site/verifying-your-custom-domain-for-github-pages)）：
+
+- 域名验证后，**只有该账号名下的仓库**可以把 Pages 站点发布到该域名**及其一级子域**；
+- 若要验证一个「已被其他用户验证过的域名」，释放流程**不会成功**。
+
+因此 `status.swordsman.top` 无法在本账号下使用。可选方案：
+
+1. **继续用 `status.yunmc.icu`**（当前方案，已可用）；
+2. 若 `mingyu-games-wmjbfs` 也是你们自己的账号：直接把本站部署到那个账号下，
+   或在那个账号的 Settings → Pages 里移除已验证域名后，再由本账号重新验证；
+3. 换一个未被验证的域名。

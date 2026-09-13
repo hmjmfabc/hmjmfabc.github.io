@@ -19,7 +19,7 @@ const { execFileSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
 const PUBLIC_DIR = path.join(ROOT, 'public');
-const DOMAIN = process.env.SITE_DOMAIN || 'status.swordsman.top';
+const DOMAIN = process.env.SITE_DOMAIN || 'status.yunmc.icu';
 const ASSETS = ['/style.css', '/app.js', '/config.js', '/motd.js', '/probe.js', '/logo.png', '/favicon.png'];
 
 function argValue(name) {

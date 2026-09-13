@@ -265,7 +265,7 @@ function expectServerStatus(endpoints) {
   check((page.match(/后端选择/g) || []).length >= 1, '卡片标题为「后端选择」');
   check(els['backend-card'] !== undefined && backendHtml.length > 0, '卡片内容已渲染');
   check(/①[\s\S]*?远端 API/.test(backendHtml), '包含选项① 远端 API');
-  check(/②[\s\S]*?本地后端/.test(backendHtml), '包含选项② 本地后端');
+  check(/②[\s\S]*?SGU物理机后端/.test(backendHtml), '包含选项② SGU物理机后端（已改名）');
   check(/③[\s\S]*?客户端访问/.test(backendHtml), '包含选项③ 客户端访问');
   check((backendHtml.match(/class="backend-hint"/g) || []).length >= 3, '每个选项都带提示文字');
   check(/mcsrvstat\.us/.test(backendHtml) && /mcstatus\.io/.test(backendHtml), '选项①下列出了所有可用 API 子选项');
@@ -277,7 +277,13 @@ function expectServerStatus(endpoints) {
     const inputs = els['backend-options'].querySelectorAll('input[name="backend-source"]');
     check(inputs.length === 3, `三个后端选项共 3 个单选项（实际 ${inputs.length}）`);
     const checked = inputs.filter((i) => i.checked);
-    check(checked.length === 1 && checked[0].value === 'server', `默认选中②本地后端（实际 ${checked.map((c) => c.value).join(',') || '无'}）`);
+    check(checked.length === 1 && checked[0].value === 'remote', `默认选中①远端 API（实际 ${checked.map((c) => c.value).join(',') || '无'}）`);
+    check(
+      inputs.find((i) => i.value === 'server').disabled === true,
+      '②SGU物理机后端因合规性考虑被置灰、不可点击'
+    );
+    check(/tag-off[\s\S]{0,40}备案中，暂不可用/.test(backendHtml), '②标注「备案中，暂不可用」');
+    check(/2027 年 1 月/.test(backendHtml) && /ipv6\.swordsman\.top:8787/.test(backendHtml), '②注明备案时间与将来的服务地址');
     check(
       inputs.find((i) => i.value === 'client').disabled === true,
       '③在非 http 页面（当前测试环境）下被禁用'
@@ -286,17 +292,17 @@ function expectServerStatus(endpoints) {
     const providerInputs = els['backend-options'].querySelectorAll('input[name="backend-provider"]');
     check(providerInputs.length === 2, `选项①下有 2 个 API 子选项（实际 ${providerInputs.length}）`);
   }
-  check(/本地后端/.test(els['backend-active'].textContent), `卡片显示当前生效来源（${els['backend-active'].textContent}）`);
-  check(/本机后端实时探测/.test(els['source-note'].innerHTML), '顶部说明当前由本地后端提供数据');
+  check(/远端 API|SGU物理机后端/.test(els['backend-active'].textContent), `卡片显示当前生效来源（${els['backend-active'].textContent}）`);
+  check(/远端 API|第三方|SGU物理机后端/.test(els['source-note'].innerHTML), '顶部说明当前数据来源');
 
-  // 模拟切换到「远端 API」并选择子接口
+  // 模拟选择 API 子接口
   {
     const inputs = els['backend-options'].querySelectorAll('input[name="backend-source"]');
     const remote = inputs.find((i) => i.value === 'remote');
     remote.checked = true;
     remote.dispatchChange();
     const saved = JSON.parse(global.localStorage.getItem('sgu-backend') || '{}');
-    check(saved.source === 'remote', `切换后写入 localStorage（${JSON.stringify(saved)}）`);
+    check(saved.source === 'remote', `选择远端 API 后写入 localStorage（${JSON.stringify(saved)}）`);
     const providerInputs = els['backend-options'].querySelectorAll('input[name="backend-provider"]');
     const first = providerInputs[0];
     first.checked = true;

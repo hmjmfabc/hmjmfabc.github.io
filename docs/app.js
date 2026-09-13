@@ -9,9 +9,11 @@
 const REFRESH_FALLBACK_MS = 5 * 60 * 1000;
 const CONFIG = (typeof window !== 'undefined' && window.SGU_CONFIG) || {};
 const API_BASE = String(CONFIG.apiBase || '').replace(/\/+$/, '');
+const LOCAL_API_BASE = String(CONFIG.localApiBase || 'http://127.0.0.1:8787').replace(/\/+$/, '');
 const MODE = CONFIG.mode || 'auto'; // auto | server | static
 const API = `${API_BASE}/api/status`;
 const THEME_KEY = 'sgu-theme';
+const BACKEND_KEY = 'sgu-backend';
 const THEME_COLOR = { light: '#d7b777', dark: '#0b0e13' };
 
 const STATUS_TEXT = {
@@ -30,7 +32,199 @@ const el = {
   sourceNote: document.getElementById('source-note'),
   lastUpdated: document.getElementById('last-updated'),
   countdown: document.getElementById('countdown-text'),
+  backendCard: document.getElementById('backend-card'),
+  backendOptions: document.getElementById('backend-options'),
+  backendActive: document.getElementById('backend-active'),
+  backendNote: document.getElementById('backend-note'),
 };
+
+/* ---------------- 后端（数据来源）选择 ---------------- */
+
+/**
+ * 客户端简单 ping 是否可用：
+ *  - 需要 WebSocket 支持
+ *  - 页面必须是 http:// 打开（HTTPS 页面会被浏览器以混合内容拦截，结果不可信）
+ * 注意：浏览器无法执行标准 mcping（不能建立原始 TCP 连接），
+ *       这里只做「域名解析 + 端口是否有响应」的粗略试探，结果可能不准确。
+ */
+function clientPingAvailable() {
+  if (typeof WebSocket === 'undefined') return false;
+  if (typeof location === 'undefined') return false;
+  return location.protocol === 'http:';
+}
+
+function clientPingBlockReason() {
+  if (typeof WebSocket === 'undefined') return '当前浏览器不支持 WebSocket';
+  if (typeof location !== 'undefined' && location.protocol !== 'http:') {
+    return '当前页面是 HTTPS 打开的，浏览器会拦截到目标端口的连接，请改用 http:// 打开本页';
+  }
+  return '当前环境不支持';
+}
+
+function readBackendPref() {
+  const fallback = { source: CONFIG.defaultBackend || 'remote', provider: '' };
+  let pref = fallback;
+  try {
+    const raw = localStorage.getItem(BACKEND_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed.source === 'string') {
+        pref = { source: parsed.source, provider: parsed.provider || '' };
+      }
+    }
+  } catch (err) {
+    // 忽略损坏的配置
+  }
+  // 已保存的选项若被停用（例如“SGU物理机后端”因备案暂时关闭），自动回退到默认项
+  const chosen = backendById(pref.source);
+  if (!chosen || backendDisabledReason(chosen)) {
+    return { source: fallback.source, provider: pref.provider || '' };
+  }
+  return pref;
+}
+
+function saveBackendPref(pref) {
+  try {
+    localStorage.setItem(BACKEND_KEY, JSON.stringify(pref));
+  } catch (err) {
+    // 隐私模式忽略
+  }
+}
+
+// 选项定义来自 config.js（由 lib/servers.js / tools/build-config.js 生成）
+const BACKENDS =
+  Array.isArray(CONFIG.backends) && CONFIG.backends.length
+    ? CONFIG.backends
+    : [
+        { id: 'remote', index: '①', name: '远端 API', enabled: true, hint: '由第三方公共接口代为探测。' },
+        {
+          id: 'server',
+          index: '②',
+          name: 'SGU物理机后端',
+          enabled: false,
+          disabledReason: '备案中，暂不可用',
+          hint: '预计 2027 年 1 月左右完成 ICP 备案后开放，届时地址为 ipv6.swordsman.top:8787。',
+        },
+        {
+          id: 'client',
+          index: '③',
+          name: '客户端访问（简单 ping）',
+          enabled: true,
+          warn: '结果可能不准确',
+          hint: '浏览器只做端口是否应答的粗略试探。',
+        },
+      ];
+
+function backendById(id) {
+  return BACKENDS.find((b) => b.id === id) || null;
+}
+
+/** 选项是否可用（配置停用，或运行环境不支持客户端试探） */
+function backendDisabledReason(backend) {
+  if (backend.enabled === false) return backend.disabledReason || '暂不可用';
+  if (backend.id === 'client' && !clientPingAvailable()) return clientPingBlockReason();
+  return null;
+}
+
+function renderBackendCard() {
+  if (!el.backendOptions) return;
+  const pref = state.backend.pref;
+  // API 列表以 config.js 为准（probe.js 只负责实现），保证界面与实际可用接口一致
+  const providers =
+    (CONFIG.probe && Array.isArray(CONFIG.probe.providers) && CONFIG.probe.providers) ||
+    (window.SGUProbe && window.SGUProbe.listProviders ? window.SGUProbe.listProviders() : []);
+  const activeProvider = state.backend.activeProvider || (providers[0] && providers[0].name) || '';
+
+  el.backendOptions.innerHTML = BACKENDS.map((backend) => {
+    const disabledReason = backendDisabledReason(backend);
+    const disabled = !!disabledReason;
+    const checked = pref.source === backend.id;
+    const subOptions =
+      backend.id === 'remote' && providers.length
+        ? `<div class="backend-suboptions">${providers
+            .map(
+              (p) => `
+          <label class="backend-suboption${disabled ? ' is-disabled' : ''}">
+            <input type="radio" name="backend-provider" value="${escapeHtml(p.name)}"${
+                pref.provider === p.name || (!pref.provider && activeProvider === p.name) ? ' checked' : ''
+              }>
+            <span class="backend-sub-body">
+              <span class="backend-sub-name">${escapeHtml(p.name)}</span>
+              <span class="backend-sub-note">${escapeHtml(p.note || '')}</span>
+            </span>
+          </label>`
+            )
+            .join('')}</div>`
+        : '';
+
+    return `
+      <label class="backend-option${checked ? ' is-active' : ''}${disabled ? ' is-disabled' : ''}" data-backend="${backend.id}">
+        <input type="radio" name="backend-source" value="${backend.id}"${checked ? ' checked' : ''}${disabled ? ' disabled' : ''}>
+        <span class="backend-body">
+          <span class="backend-name">
+            <span class="backend-index">${backend.index}</span>${escapeHtml(backend.name)}
+            ${backend.id === (CONFIG.defaultBackend || 'remote') ? '<span class="backend-tag">默认</span>' : ''}
+            ${backend.warn ? `<span class="backend-tag tag-warn">${escapeHtml(backend.warn)}</span>` : ''}
+            ${disabled ? `<span class="backend-tag tag-off">${escapeHtml(disabledReason)}</span>` : ''}
+            ${state.backend.via === backend.id ? '<span class="backend-tag tag-live">使用中</span>' : ''}
+          </span>
+          <span class="backend-hint">${escapeHtml(backend.hint)}</span>
+          ${
+            backend.publicUrl && !disabled
+              ? `<span class="backend-hint">服务地址：${escapeHtml(backend.publicUrl)}</span>`
+              : ''
+          }
+          ${subOptions}
+        </span>
+      </label>`;
+  }).join('');
+
+  // 绑定事件
+  el.backendOptions.querySelectorAll('input[name="backend-source"]').forEach((input) => {
+    input.addEventListener('change', () => {
+      if (!input.checked) return;
+      const chosen = backendById(input.value);
+      const blocked = chosen ? backendDisabledReason(chosen) : null;
+      if (blocked) {
+        renderBackendNote(`「${chosen.name}」当前不可用：${blocked}`);
+        renderBackendCard();
+        return;
+      }
+      state.backend.pref = { source: input.value, provider: state.backend.pref.provider };
+      saveBackendPref(state.backend.pref);
+      renderBackendCard();
+      loadStatus({ force: true });
+    });
+  });
+  el.backendOptions.querySelectorAll('input[name="backend-provider"]').forEach((input) => {
+    input.addEventListener('change', () => {
+      if (!input.checked) return;
+      state.backend.pref = { source: 'remote', provider: input.value };
+      saveBackendPref(state.backend.pref);
+      renderBackendCard();
+      loadStatus({ force: true });
+    });
+  });
+
+  // 当前生效说明（首次获取完成前不猜测）
+  if (el.backendActive) {
+    const names = {};
+    for (const b of BACKENDS) names[b.id] = b.name;
+    const via = state.backend.via;
+    if (!via) {
+      el.backendActive.textContent = '正在检测…';
+    } else {
+      el.backendActive.textContent =
+        names[via] + (via === 'remote' && state.backend.activeProvider ? `（${state.backend.activeProvider}）` : '');
+    }
+  }
+}
+
+function renderBackendNote(text) {
+  if (!el.backendNote) return;
+  el.backendNote.textContent = text || '';
+  el.backendNote.classList.toggle('show', !!text);
+}
 
 let state = {
   nextUpdateAt: Date.now() + REFRESH_FALLBACK_MS,
@@ -41,6 +235,12 @@ let state = {
   lastError: null,
   source: 'server',
   serverClockOffset: 0,
+  backend: {
+    pref: { source: 'remote', provider: '' }, // 用户选择（默认远端 API）
+    via: null, // 本次实际使用的数据来源
+    activeProvider: null, // 远端模式下实际生效的接口
+    notice: '', // 自动切换等提示
+  },
 };
 
 /* ---------------- 工具函数 ---------------- */
@@ -159,14 +359,22 @@ function renderMotd(ep) {
   return `<div class="motd" title="${plain}">${html}</div>`;
 }
 
+function state_isLowAccuracy() {
+  return state.source === 'client';
+}
+
 function renderEndpoint(ep, history, limit, intervalMs) {
   const state = ep.state || (ep.online ? 'online' : 'offline');
   const statusClass = state === 'online' ? 'up' : state === 'offline' ? 'down' : 'unknown';
   const stateText = state === 'online' ? '在线' : state === 'offline' ? '离线' : '未验证';
   const metas = [];
 
+  const lowAccuracy = ep.accuracy === 'low' || state_isLowAccuracy();
   if (state === 'online') {
     if (ep.latency != null) metas.push(`<span>延迟 <span class="meta-strong">${ep.latency} ms</span></span>`);
+    if (ep.responseMs != null) {
+      metas.push(`<span>端口响应 <span class="meta-strong">${ep.responseMs} ms</span></span>`);
+    }
     if (ep.version) metas.push(`<span>版本 <span class="meta-strong">${escapeHtml(ep.version)}</span></span>`);
     if (ep.players && (ep.players.online != null || ep.players.max != null)) {
       const online = ep.players.online ?? '-';
@@ -191,6 +399,7 @@ function renderEndpoint(ep, history, limit, intervalMs) {
             ${icon}
             <span class="badge kind-badge">${escapeHtml(ep.label)}</span>
             <span class="line-name"><span class="dot"></span>${stateText}</span>
+            ${lowAccuracy ? '<span class="accuracy-tag">结果可能不准确</span>' : ''}
           </div>
           <div class="extra-info">${metas.join('')}</div>
           ${renderMotd(ep)}
@@ -265,12 +474,18 @@ function showNotice(message) {
   el.notice.classList.add('show');
 }
 
-/** 顶部说明数据来源，静态部署时明确告知由浏览器直连探测 */
+/** 顶部说明数据来源：本地后端 / 远端 API */
 function renderSource(data) {
   if (!el.sourceNote) return;
-  if (data.source === 'static') {
+  if (data.source === 'remote') {
     const name = data.sourceName ? escapeHtml(data.sourceName) : '第三方接口';
-    el.sourceNote.innerHTML = `数据由浏览器实时探测（IPv4 / IPv6 均通过网络节点查询，节点：${name}）`;
+    el.sourceNote.innerHTML = `数据由远端 API 代理探测（IPv4 / IPv6 均由网络节点查询，节点：${name}）`;
+  } else if (data.source === 'server') {
+    const backendName = (backendById('server') || {}).name || 'SGU物理机后端';
+    el.sourceNote.innerHTML = `数据由${escapeHtml(backendName)}实时探测（含延迟测量）`;
+  } else if (data.source === 'client') {
+    el.sourceNote.innerHTML =
+      '数据来自浏览器「简单 ping」（仅探测端口是否有响应，<strong>结果可能不准确</strong>，仅供参考）';
   } else {
     el.sourceNote.textContent = '';
   }
@@ -328,23 +543,159 @@ function tickCountdown() {
 
 /* ---------------- 数据获取 ---------------- */
 
-/** 同源 / 指定地址的后端接口 */
-async function fetchFromServer() {
-  const res = await fetch(`${API}${state.forceOnce ? '?refresh=1' : ''}`, {
-    headers: { Accept: 'application/json' },
-    cache: 'no-store',
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data = await res.json();
-  if (!data || data.ok === false) throw new Error('接口返回异常');
-  return Object.assign(data, { source: 'server' });
+/** 带超时的 JSON 请求（本地后端探测需要快速失败，才能及时回退） */
+async function fetchJsonWithTimeout(url, ms) {
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = setTimeout(() => {
+    if (controller) controller.abort();
+  }, ms);
+  try {
+    const res = await fetch(url, {
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+      signal: controller ? controller.signal : undefined,
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (!data || data.ok === false) throw new Error('接口返回异常');
+    return data;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
-/** 浏览器直连探测（静态部署） */
-async function fetchFromProbe() {
+/** 本地 / 自建后端接口 */
+async function fetchFromServer() {
+  const suffix = state.forceOnce ? '?refresh=1' : '';
+  const urls = API_BASE ? [`${API_BASE}/api/status${suffix}`] : [`/api/status${suffix}`];
+  // 页面不是由本机后端提供时（例如从 GitHub Pages 打开），额外尝试本机地址
+  if (!API_BASE && typeof location !== 'undefined' && location.protocol !== 'file:') {
+    const sameOrigin =
+      (location.hostname === '127.0.0.1' || location.hostname === 'localhost') &&
+      location.port === new URL(LOCAL_API_BASE).port;
+    if (!sameOrigin) urls.push(`${LOCAL_API_BASE}/api/status${suffix}`);
+  }
+
+  let lastError = null;
+  for (const url of urls) {
+    try {
+      const data = await fetchJsonWithTimeout(url, 5000);
+      return Object.assign(data, { source: 'server' });
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw new Error(lastError ? lastError.message : '本地后端不可用');
+}
+
+/** 远端 API（浏览器直连第三方接口）/ 静态模式探测 */
+async function fetchFromProbe(provider) {
   if (!window.SGUProbe) throw new Error('探测模块未加载');
-  const data = await window.SGUProbe.fetchStatus();
-  return Object.assign(data, { source: 'static' });
+  const data = await window.SGUProbe.fetchStatus(provider ? { provider } : {});
+  return Object.assign(data, { source: 'remote' });
+}
+
+/**
+ * 按用户选择获取数据。
+ * ② 本地后端失败时自动切换到 ① 远端 API（若指定接口也失败，则依次尝试其它接口）。
+ */
+async function fetchByBackend() {
+  const pref = state.backend.pref;
+  const errors = [];
+  state.backend.notice = '';
+
+  // 选中项被停用时（例如因备案关闭的物理机后端），回退到默认项
+  const chosen = backendById(pref.source);
+  const blocked = chosen ? backendDisabledReason(chosen) : null;
+  if (blocked) {
+    const fallbackId = CONFIG.defaultBackend || 'remote';
+    state.backend.notice = `「${chosen.name}」当前不可用（${blocked}），已自动改用「${
+      (backendById(fallbackId) || {}).name || '远端 API'
+    }」。`;
+    state.backend.pref = { source: fallbackId, provider: pref.provider };
+    return fetchByBackend();
+  }
+
+  const tryServer = async () => {
+    const data = await fetchFromServer();
+    state.backend.via = 'server';
+    state.backend.activeProvider = null;
+    return data;
+  };
+
+  const tryRemote = async (provider) => {
+    let data;
+    try {
+      data = await fetchFromProbe(provider);
+    } catch (err) {
+      if (!provider) throw err;
+      // 指定的接口不可用时，退回自动选择
+      data = await fetchFromProbe(null);
+      errors.push(`${provider} 不可用，已改用其它接口`);
+    }
+    if (!data.provider) {
+      const first = (data.servers || [])
+        .flatMap((s) => s.endpoints)
+        .map((e) => e.provider)
+        .find(Boolean);
+      if (first) data.provider = first;
+    }
+    state.backend.via = 'remote';
+    state.backend.activeProvider = data.provider || provider || null;
+    return data;
+  };
+
+  if (pref.source === 'client' && clientPingAvailable()) {
+    try {
+      const data = await window.SGUProbe.simplePingStatus();
+      state.backend.via = 'client';
+      state.backend.activeProvider = null;
+      state.backend.notice = '当前使用「客户端简单 ping」：只检测域名解析与端口是否有响应，结果可能不准确，仅供参考。';
+      return Object.assign(data, { source: 'client' });
+    } catch (err) {
+      errors.push(`客户端简单 ping 失败（${err.message}）`);
+      state.backend.notice = `客户端简单 ping 不可用（${err.message}），已自动切换到远端 API。`;
+      const data = await tryRemote(null);
+      return data;
+    }
+  }
+  if (pref.source === 'client') {
+    state.backend.notice = `客户端简单 ping 暂不可用（${clientPingBlockReason()}），已自动切换到远端 API。`;
+  }
+
+  if (pref.source === 'server') {
+    try {
+      return await tryServer();
+    } catch (err) {
+      errors.push(`本地后端不可用（${err.message}）`);
+      const data = await tryRemote(null).catch((e) => {
+        errors.push(`远端 API 也不可用（${e.message}）`);
+        throw new Error(errors.join('；'));
+      });
+      state.backend.notice = `本地后端未运行或无法访问，已自动切换为远端 API${
+        data.provider ? `（${data.provider}）` : ''
+      }。`;
+      return data;
+    }
+  }
+
+  // ① 远端 API（默认路径 / ③ 的兜底路径）
+  try {
+    return await tryRemote(pref.provider || null);
+  } catch (err) {
+    errors.push(`远端 API 不可用（${err.message}）`);
+    // 远端也失败时，最后再试一次本地后端
+    if (MODE !== 'static') {
+      try {
+        const data = await tryServer();
+        state.backend.notice = '远端 API 不可用，已自动改用本地后端。';
+        return data;
+      } catch (e) {
+        errors.push(`本地后端也不可用（${e.message}）`);
+      }
+    }
+    throw new Error(errors.join('；'));
+  }
 }
 
 async function loadStatus(options = {}) {
@@ -353,25 +704,7 @@ async function loadStatus(options = {}) {
   state.forceOnce = !!options.force;
   const requestedAt = Date.now();
   try {
-    let data = null;
-    let serverError = null;
-
-    if (MODE !== 'static') {
-      try {
-        data = await fetchFromServer();
-      } catch (err) {
-        serverError = err;
-        if (MODE === 'server') throw err;
-      }
-    }
-
-    if (!data) {
-      try {
-        data = await fetchFromProbe();
-      } catch (err) {
-        throw serverError ? new Error(`${serverError.message}；浏览器探测同样失败：${err.message}`) : err;
-      }
-    }
+    const data = await fetchByBackend();
 
     // 用响应中携带的服务端时间校正客户端时钟差，保证倒计时与刷新时刻一致
     const roundTrip = Math.max(0, Date.now() - requestedAt);
@@ -392,6 +725,8 @@ async function loadStatus(options = {}) {
     renderGroups(data);
     renderFooter(data);
     renderSource(data);
+    renderBackendCard();
+    renderBackendNote(state.backend.notice);
     // 本机（自建后端）没有 IPv6 出口时给出明确提示，避免把探测端问题误读为服务器掉线
     if (data.hostIpv6 === false) {
       showNotice('当前探测端（本机）没有 IPv6 网络，IPv6 线路无法验证，已标记为「未验证」而非离线。');
@@ -404,6 +739,8 @@ async function loadStatus(options = {}) {
     el.overall.classList.remove('loading');
     el.overallText.textContent = '状态获取失败';
     showNotice(`无法获取服务器状态（${err.message}），将在 30 秒后重试。`);
+    renderBackendCard();
+    renderBackendNote('所有数据来源都不可用，请检查网络，或在页面底部切换“后端选择”。');
     state.nextUpdateAt = Date.now() + 30 * 1000;
   } finally {
     state.loading = false;
@@ -432,5 +769,7 @@ document.addEventListener('visibilitychange', () => {
 
 tickCountdown();
 initThemeToggle();
+state.backend.pref = readBackendPref();
+renderBackendCard();
 loadStatus();
 schedule();

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- SGU 状态监测 静态构建版本: v1 -->
+<!-- SGU 状态监测 静态构建版本: release -->
 <html lang="zh-CN" dir="ltr">
 <head>
   <meta charset="UTF-8">
@@ -7,12 +7,12 @@
   <title>SGU 剑客群组服 状态监测</title>
   <meta name="description" content="SGU 剑客群组服 各服务状态监测">
   <meta name="theme-color" id="theme-color" content="#d7b777">
-  <link rel="icon" type="image/png" href="/favicon.png?v=v1">
-  <link rel="apple-touch-icon" href="/favicon.png?v=v1">
+  <link rel="icon" type="image/png" href="/favicon.png?v=release">
+  <link rel="apple-touch-icon" href="/favicon.png?v=release">
   <meta property="og:title" content="SGU 剑客群组服 状态监测">
   <meta property="og:description" content="SGU 剑客群组服 各服务状态监测">
   <meta property="og:type" content="website">
-  <link rel="stylesheet" href="/style.css?v=v1">
+  <link rel="stylesheet" href="/style.css?v=release">
   <script>
     /* 在首次绘制前确定主题，避免闪白 */
     (function () {
@@ -46,7 +46,7 @@
     <div class="main">
       <h1 class="title-flex">
         <span class="logo-wrapper">
-          <img class="logo" src="/logo.png?v=v1" alt="剑客群组服" width="48" height="48">
+          <img class="logo" src="/logo.png?v=release" alt="剑客群组服" width="48" height="48">
         </span>
         <span class="site-title">SGU 剑客群组服 状态监测</span>
       </h1>
@@ -85,6 +85,15 @@
         </div>
       </div>
 
+      <section class="shadow-box backend-card" id="backend-card" aria-labelledby="backend-title">
+        <h2 class="backend-title" id="backend-title">后端选择</h2>
+        <p class="backend-subtitle">
+          选择状态数据的获取方式，设置会保存在本机浏览器中。当前生效：<strong id="backend-active">加载中…</strong>
+        </p>
+        <div class="backend-options" id="backend-options"></div>
+        <p class="backend-note" id="backend-note"></p>
+      </section>
+
       <footer>
         <div class="footer-copyright">Copyright © 剑客群组服 2024～2026</div>
         <div class="refresh-info">
@@ -103,9 +112,9 @@
     </div>
   </noscript>
 
-  <script src="/config.js?v=v1"></script>
-  <script src="/motd.js?v=v1"></script>
-  <script src="/probe.js?v=v1"></script>
-  <script src="/app.js?v=v1"></script>
+  <script src="/config.js?v=release"></script>
+  <script src="/motd.js?v=release"></script>
+  <script src="/probe.js?v=release"></script>
+  <script src="/app.js?v=release"></script>
 </body>
 </html>

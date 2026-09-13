@@ -62,18 +62,25 @@ function clientPingBlockReason() {
 }
 
 function readBackendPref() {
-  const fallback = { source: CONFIG.defaultBackend || 'server', provider: '' };
+  const fallback = { source: CONFIG.defaultBackend || 'remote', provider: '' };
+  let pref = fallback;
   try {
     const raw = localStorage.getItem(BACKEND_KEY);
-    if (!raw) return fallback;
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed.source === 'string') {
-      return { source: parsed.source, provider: parsed.provider || '' };
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed.source === 'string') {
+        pref = { source: parsed.source, provider: parsed.provider || '' };
+      }
     }
   } catch (err) {
     // 忽略损坏的配置
   }
-  return fallback;
+  // 已保存的选项若被停用（例如“SGU物理机后端”因备案暂时关闭），自动回退到默认项
+  const chosen = backendById(pref.source);
+  if (!chosen || backendDisabledReason(chosen)) {
+    return { source: fallback.source, provider: pref.provider || '' };
+  }
+  return pref;
 }
 
 function saveBackendPref(pref) {
@@ -84,27 +91,40 @@ function saveBackendPref(pref) {
   }
 }
 
-const BACKENDS = [
-  {
-    id: 'remote',
-    index: '①',
-    name: '远端 API',
-    hint: '由第三方公共接口代为探测，浏览器直接访问，不需要本机后端。IPv4 / IPv6 都能检测，但拿不到延迟，且依赖第三方服务可用性。',
-  },
-  {
-    id: 'server',
-    index: '②',
-    name: '本地后端',
-    hint: '使用本机运行的 Node 后端（127.0.0.1:8787），数据最完整（含延迟），全部探测在本机完成。若本机没有 IPv6 出口，IPv6 线路会显示「未验证」。默认选项；若连不上会自动切换到远端 API。',
-  },
-  {
-    id: 'client',
-    index: '③',
-    name: '客户端访问（简单 ping）',
-    hint: '在浏览器里做一次简单试探：解析域名后向目标端口发起 WebSocket 连接，看端口有没有响应。浏览器无法执行标准 mcping（不能建立原始 TCP 连接），因此只能判断「端口是否有人应答」，拿不到版本、人数、MOTD。',
-    warn: '结果可能不准确',
-  },
-];
+// 选项定义来自 config.js（由 lib/servers.js / tools/build-config.js 生成）
+const BACKENDS =
+  Array.isArray(CONFIG.backends) && CONFIG.backends.length
+    ? CONFIG.backends
+    : [
+        { id: 'remote', index: '①', name: '远端 API', enabled: true, hint: '由第三方公共接口代为探测。' },
+        {
+          id: 'server',
+          index: '②',
+          name: 'SGU物理机后端',
+          enabled: false,
+          disabledReason: '备案中，暂不可用',
+          hint: '预计 2027 年 1 月左右完成 ICP 备案后开放，届时地址为 ipv6.swordsman.top:8787。',
+        },
+        {
+          id: 'client',
+          index: '③',
+          name: '客户端访问（简单 ping）',
+          enabled: true,
+          warn: '结果可能不准确',
+          hint: '浏览器只做端口是否应答的粗略试探。',
+        },
+      ];
+
+function backendById(id) {
+  return BACKENDS.find((b) => b.id === id) || null;
+}
+
+/** 选项是否可用（配置停用，或运行环境不支持客户端试探） */
+function backendDisabledReason(backend) {
+  if (backend.enabled === false) return backend.disabledReason || '暂不可用';
+  if (backend.id === 'client' && !clientPingAvailable()) return clientPingBlockReason();
+  return null;
+}
 
 function renderBackendCard() {
   if (!el.backendOptions) return;
@@ -116,7 +136,8 @@ function renderBackendCard() {
   const activeProvider = state.backend.activeProvider || (providers[0] && providers[0].name) || '';
 
   el.backendOptions.innerHTML = BACKENDS.map((backend) => {
-    const disabled = backend.id === 'client' && !clientPingAvailable();
+    const disabledReason = backendDisabledReason(backend);
+    const disabled = !!disabledReason;
     const checked = pref.source === backend.id;
     const subOptions =
       backend.id === 'remote' && providers.length
@@ -142,19 +163,15 @@ function renderBackendCard() {
         <span class="backend-body">
           <span class="backend-name">
             <span class="backend-index">${backend.index}</span>${escapeHtml(backend.name)}
-            ${backend.id === 'server' && !pref.source ? '<span class="backend-tag">默认</span>' : ''}
+            ${backend.id === (CONFIG.defaultBackend || 'remote') ? '<span class="backend-tag">默认</span>' : ''}
             ${backend.warn ? `<span class="backend-tag tag-warn">${escapeHtml(backend.warn)}</span>` : ''}
-            ${disabled ? `<span class="backend-tag tag-off">${escapeHtml(clientPingBlockReason())}</span>` : ''}
+            ${disabled ? `<span class="backend-tag tag-off">${escapeHtml(disabledReason)}</span>` : ''}
             ${state.backend.via === backend.id ? '<span class="backend-tag tag-live">使用中</span>' : ''}
           </span>
           <span class="backend-hint">${escapeHtml(backend.hint)}</span>
           ${
-            backend.id === 'server'
-              ? `<span class="backend-hint">未运行时页面会自动改用远端 API，不会影响查看。${
-                  typeof location !== 'undefined' && location.protocol === 'https:'
-                    ? '注意：当前页面是 HTTPS 打开的，浏览器会拦截对本机 HTTP 后端的访问，请改用 http://127.0.0.1:8787 打开本页。'
-                    : ''
-                }</span>`
+            backend.publicUrl && !disabled
+              ? `<span class="backend-hint">服务地址：${escapeHtml(backend.publicUrl)}</span>`
               : ''
           }
           ${subOptions}
@@ -166,6 +183,13 @@ function renderBackendCard() {
   el.backendOptions.querySelectorAll('input[name="backend-source"]').forEach((input) => {
     input.addEventListener('change', () => {
       if (!input.checked) return;
+      const chosen = backendById(input.value);
+      const blocked = chosen ? backendDisabledReason(chosen) : null;
+      if (blocked) {
+        renderBackendNote(`「${chosen.name}」当前不可用：${blocked}`);
+        renderBackendCard();
+        return;
+      }
       state.backend.pref = { source: input.value, provider: state.backend.pref.provider };
       saveBackendPref(state.backend.pref);
       renderBackendCard();
@@ -184,7 +208,8 @@ function renderBackendCard() {
 
   // 当前生效说明（首次获取完成前不猜测）
   if (el.backendActive) {
-    const names = { server: '本地后端', remote: '远端 API', client: '客户端访问（简单 ping）' };
+    const names = {};
+    for (const b of BACKENDS) names[b.id] = b.name;
     const via = state.backend.via;
     if (!via) {
       el.backendActive.textContent = '正在检测…';
@@ -211,7 +236,7 @@ let state = {
   source: 'server',
   serverClockOffset: 0,
   backend: {
-    pref: { source: 'server', provider: '' }, // 用户选择
+    pref: { source: 'remote', provider: '' }, // 用户选择（默认远端 API）
     via: null, // 本次实际使用的数据来源
     activeProvider: null, // 远端模式下实际生效的接口
     notice: '', // 自动切换等提示
@@ -456,7 +481,8 @@ function renderSource(data) {
     const name = data.sourceName ? escapeHtml(data.sourceName) : '第三方接口';
     el.sourceNote.innerHTML = `数据由远端 API 代理探测（IPv4 / IPv6 均由网络节点查询，节点：${name}）`;
   } else if (data.source === 'server') {
-    el.sourceNote.innerHTML = '数据由本机后端实时探测（含延迟测量）';
+    const backendName = (backendById('server') || {}).name || 'SGU物理机后端';
+    el.sourceNote.innerHTML = `数据由${escapeHtml(backendName)}实时探测（含延迟测量）`;
   } else if (data.source === 'client') {
     el.sourceNote.innerHTML =
       '数据来自浏览器「简单 ping」（仅探测端口是否有响应，<strong>结果可能不准确</strong>，仅供参考）';
@@ -577,6 +603,18 @@ async function fetchByBackend() {
   const pref = state.backend.pref;
   const errors = [];
   state.backend.notice = '';
+
+  // 选中项被停用时（例如因备案关闭的物理机后端），回退到默认项
+  const chosen = backendById(pref.source);
+  const blocked = chosen ? backendDisabledReason(chosen) : null;
+  if (blocked) {
+    const fallbackId = CONFIG.defaultBackend || 'remote';
+    state.backend.notice = `「${chosen.name}」当前不可用（${blocked}），已自动改用「${
+      (backendById(fallbackId) || {}).name || '远端 API'
+    }」。`;
+    state.backend.pref = { source: fallbackId, provider: pref.provider };
+    return fetchByBackend();
+  }
 
   const tryServer = async () => {
     const data = await fetchFromServer();

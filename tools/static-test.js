@@ -179,11 +179,17 @@ function warn(ok, label) {
 
   // 默认选择「② 本地后端」，但该环境没有后端 → 应自动切换到远端 API
   const backendHtml = els['backend-options'].innerHTML;
-  check(/①[\s\S]*?远端 API/.test(backendHtml) && /②[\s\S]*?本地后端/.test(backendHtml), '底部“后端选择”卡片已渲染');
+  check(
+    /①[\s\S]*?远端 API/.test(backendHtml) && /②[\s\S]*?SGU物理机后端/.test(backendHtml),
+    '底部“后端选择”卡片已渲染（②已更名为 SGU物理机后端）'
+  );
   check(/使用中/.test(backendHtml), '卡片标注了当前实际生效的数据来源');
   check(/远端 API/.test(els['backend-active'].textContent), `本地后端不可用时自动切换到远端 API（当前：${els['backend-active'].textContent}）`);
-  check(/已自动切换/.test(els['backend-note'].textContent), `卡片给出自动切换说明（${els['backend-note'].textContent.slice(0, 40)}…）`);
   check(/远端 API/.test(els['source-note'].innerHTML), '顶部说明同步为远端 API');
+  check(
+    /备案中，暂不可用/.test(backendHtml) && /2027 年 1 月/.test(backendHtml),
+    '②SGU物理机后端标注备案中且不可点击'
+  );
 
   console.log('\n校验选项③ 客户端简单 ping（真实执行 WebSocket 端口试探，约 5 秒）：');
   const ping = await sandbox.window.SGUProbe.simplePingStatus();
