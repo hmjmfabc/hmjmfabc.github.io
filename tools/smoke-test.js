@@ -270,14 +270,19 @@ function expectServerStatus(endpoints) {
   check((backendHtml.match(/class="backend-hint"/g) || []).length >= 3, '每个选项都带提示文字');
   check(/mcsrvstat\.us/.test(backendHtml) && /mcstatus\.io/.test(backendHtml), '选项①下列出了所有可用 API 子选项');
   check(/name="backend-provider"/.test(backendHtml), 'API 子选项使用单选按钮');
-  check(/tag-off[\s\S]*?不可用/.test(backendHtml), '选项③标记为不可用并说明原因');
-  check(/原始 TCP 连接/.test(backendHtml), '选项③给出浏览器限制的说明');
+  check(/tag-warn[\s\S]*?结果可能不准确/.test(backendHtml), '选项③特别标注「结果可能不准确」');
+  check(/原始 TCP 连接/.test(backendHtml) && /标准 mcping/.test(backendHtml), '选项③给出浏览器限制的说明');
+  check(/简单 ping/.test(backendHtml) && /WebSocket/.test(backendHtml), '选项③说明采用「向端口发起 WebSocket 试探」的方式');
   {
     const inputs = els['backend-options'].querySelectorAll('input[name="backend-source"]');
     check(inputs.length === 3, `三个后端选项共 3 个单选项（实际 ${inputs.length}）`);
     const checked = inputs.filter((i) => i.checked);
     check(checked.length === 1 && checked[0].value === 'server', `默认选中②本地后端（实际 ${checked.map((c) => c.value).join(',') || '无'}）`);
-    check(inputs.find((i) => i.value === 'client').disabled === true, '③客户端访问在界面上不可选');
+    check(
+      inputs.find((i) => i.value === 'client').disabled === true,
+      '③在非 http 页面（当前测试环境）下被禁用'
+    );
+    check(/tag-off/.test(backendHtml), '③禁用时给出原因标签');
     const providerInputs = els['backend-options'].querySelectorAll('input[name="backend-provider"]');
     check(providerInputs.length === 2, `选项①下有 2 个 API 子选项（实际 ${providerInputs.length}）`);
   }

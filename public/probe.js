@@ -77,9 +77,9 @@
         const data = await res.json();
         const answers = Array.isArray(data.Answer) ? data.Answer : [];
         const matched = answers.filter((a) => a.type === wantType).map((a) => String(a.data));
-        if (matched.length) return matched;
-        // 该解析通道可用但没有记录，直接返回空（换通道也是同样结果）
-        if (typeof data.Status === 'number' && data.Status === 0) return [];
+        // 只要解析通道给出了有效 DNS 响应（NOERROR / NXDOMAIN 等），就以它的结果为准，
+        // 不再尝试后续通道——否则 NXDOMAIN 会白白等满每个通道的超时。
+        if (typeof data.Status === 'number') return matched;
         lastError = `DNS 状态码 ${data.Status}`;
       } catch (err) {
         lastError = err.message;
@@ -127,6 +127,8 @@
         }
         return {
           ok: true,
+          host: address,
+          port: target.port,
           address: `${address}:${target.port}`,
           family: isIpv6(address) ? 6 : 4,
           note: `SRV → ${target.target}:${target.port}`,
@@ -138,6 +140,8 @@
         if (list.length) {
           return {
             ok: true,
+            host: list[0],
+            port: endpoint.port,
             address: `${list[0]}:${endpoint.port}`,
             family: 4,
             note: `A → ${list[0]}:${endpoint.port}（无 SRV 记录，回退）`,
@@ -156,6 +160,8 @@
         const addr = list[0];
         return {
           ok: true,
+          host: addr,
+          port: endpoint.port,
           address: `[${addr}]:${endpoint.port}`,
           family: 6,
           note: `AAAA → [${addr}]:${endpoint.port}`,
@@ -308,6 +314,188 @@
     return history;
   }
 
+  /* ---------------- 客户端“简单 ping” ----------------
+   * 浏览器无法执行标准 mcping（不能开原始 TCP 连接），这里退而求其次：
+   *   1. 用 DoH 解析域名（结果可靠）
+   *   2. 向目标端口发起一次 WebSocket 连接，观察是否有响应
+   * 实测：Minecraft 端口收到 HTTP/WebSocket 握手后会主动断开（约百米毫秒），
+   *       而未开放或被防火墙丢弃的端口会一直无响应直到超时。
+   * 据此判断端口是否有服务在监听——结论仅供参考，界面上会标注“结果可能不准确”。
+   * ------------------------------------------------------------------ */
+
+  const CLIENT_PING_TIMEOUT = 4000;
+  const REF_PORT = 1; // 参考端口：几乎不可能开放，用来测出「本机到该主机的拒绝/丢弃基线」
+  const REF_DELTA_MS = 80; // 目标比参考慢这么多，认为端口接受了连接后才断开
+  const ABS_OPEN_MS = 100; // 参考端口无响应时的绝对兜底阈值
+
+  /** 向 host:port 发起 WebSocket 试探，返回是否得到响应以及耗时 */
+  function wsProbe(host, port, timeoutMs) {
+    return new Promise((resolve) => {
+      const startedAt = Date.now();
+      let settled = false;
+      let socket = null;
+      const target = host.includes(':') ? `[${host}]` : host;
+      const done = (responded, reason) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (socket) {
+          try {
+            socket.onopen = socket.onerror = socket.onclose = null;
+            socket.close();
+          } catch (err) {
+            // 忽略
+          }
+        }
+        resolve({ responded, ms: Date.now() - startedAt, reason });
+      };
+      const timer = setTimeout(() => done(false, 'timeout'), timeoutMs);
+
+      if (typeof WebSocket === 'undefined') {
+        done(false, 'unsupported');
+        return;
+      }
+      try {
+        socket = new WebSocket(`ws://${target}:${port}/`);
+      } catch (err) {
+        done(false, 'blocked');
+        return;
+      }
+      socket.onopen = () => done(true, 'open');
+      socket.onerror = () => done(true, 'error');
+      socket.onclose = () => done(true, 'close');
+    });
+  }
+
+  /** 客户端简单 ping 模式：只做「域名解析 + 端口是否有响应」 */
+  async function simplePingStatus() {
+    const conf = config();
+    const startedAt = Date.now();
+    const timeoutMs = (conf.probe && conf.probe.clientPing && conf.probe.clientPing.timeoutMs) || CLIENT_PING_TIMEOUT;
+    const flat = conf.servers.flatMap((s) => s.endpoints);
+
+    const results = await Promise.all(
+      flat.map(async (endpoint) => {
+        const base = {
+          id: endpoint.id,
+          kind: endpoint.kind,
+          label: endpoint.label,
+          host: endpoint.host,
+          port: endpoint.port,
+          srv: !!endpoint.srv,
+          accuracy: 'low',
+          latency: null,
+          checkedAt: Date.now(),
+        };
+
+        const resolved = await resolveEndpoint(endpoint).catch((err) => ({
+          ok: false,
+          message: `域名解析失败：${err.message}`,
+        }));
+        if (!resolved.ok) {
+          return Object.assign(base, {
+            online: false,
+            state: 'offline',
+            error: 'DNS_ERROR',
+            message: resolved.message,
+          });
+        }
+
+        // 同时试探同主机上一个几乎不可能开放的端口，作为「拒绝/丢弃」的基线
+        const [probe, reference] = await Promise.all([
+          wsProbe(resolved.host, resolved.port, timeoutMs),
+          wsProbe(resolved.host, REF_PORT, timeoutMs),
+        ]);
+
+        let state = 'unknown';
+        let message = null;
+        if (!probe.responded) {
+          message =
+            probe.reason === 'unsupported'
+              ? '当前浏览器不支持 WebSocket 试探'
+              : `端口在 ${Math.round(timeoutMs / 1000)} 秒内无任何响应（无法确认，可能被防火墙丢弃或服务未运行）`;
+        } else if (reference.responded) {
+          if (probe.ms >= reference.ms + REF_DELTA_MS) {
+            state = 'online';
+          } else {
+            state = 'offline';
+            message = `端口立即拒绝了连接（参考端口 ${reference.ms} ms / 目标 ${probe.ms} ms）`;
+          }
+        } else {
+          // 参考端口无响应而目标有响应：用绝对耗时兜底
+          if (probe.ms >= ABS_OPEN_MS) {
+            state = 'online';
+          } else {
+            message = `端口在 ${probe.ms} ms 内立即拒绝连接，未开放服务`;
+          }
+        }
+
+        return Object.assign(base, {
+          online: state === 'online',
+          state,
+          responseMs: probe.ms,
+          referenceMs: reference.responded ? reference.ms : null,
+          error: state === 'offline' ? 'NO_RESPONSE' : null,
+          message,
+        });
+      })
+    );
+
+    const byId = new Map(results.map((r) => [r.id, r]));
+    const servers = conf.servers.map((server) => {
+      const endpoints = server.endpoints.map((ep) => byId.get(ep.id)).filter(Boolean);
+      const status = aggregateEndpointStatus(endpoints);
+      return {
+        id: server.id,
+        name: server.name,
+        subtitle: server.subtitle || '',
+        qq: server.qq || null,
+        status,
+        statusText: (STATUS_TEXT[status] || STATUS_TEXT.unknown).server,
+        onlineCount: endpoints.filter((e) => e.state === 'online').length,
+        unknownCount: endpoints.filter((e) => e.state === 'unknown').length,
+        totalCount: endpoints.length,
+        endpoints,
+      };
+    });
+
+    const upCount = servers.filter((s) => s.status === 'up').length;
+    const downCount = servers.filter((s) => s.status === 'down').length;
+    const overall = upCount === servers.length ? 'up' : downCount === servers.length ? 'down' : 'partial';
+    const updatedAt = Date.now();
+    const allEndpoints = servers.flatMap((s) => s.endpoints);
+
+    return {
+      ok: true,
+      source: 'client',
+      sourceName: '浏览器简单 ping',
+      method: 'DNS 解析 + 端口 WebSocket 试探（与同主机参考端口对照）',
+      accuracy: 'low',
+      site: conf.site,
+      overall,
+      overallText: (STATUS_TEXT[overall] || STATUS_TEXT.unknown).overall,
+      servers,
+      summary: {
+        servers: servers.length,
+        serversUp: upCount,
+        serversPartial: servers.filter((s) => s.status === 'partial').length,
+        serversDown: downCount,
+        endpoints: allEndpoints.length,
+        endpointsOnline: allEndpoints.filter((e) => e.state === 'online').length,
+        endpointsUnknown: allEndpoints.filter((e) => e.state === 'unknown').length,
+        playersOnline: 0,
+      },
+      history: pushHistory(allEndpoints, updatedAt),
+      historyIntervalMs: conf.refreshIntervalMs,
+      historyLimit: conf.historyLimit || 24,
+      refreshIntervalMs: conf.refreshIntervalMs,
+      nextUpdateAt: nextBoundary(updatedAt),
+      updatedAt,
+      updatedAtISO: new Date(updatedAt).toISOString(),
+      durationMs: Date.now() - startedAt,
+    };
+  }
+
   /* ---------------- 状态聚合 ---------------- */
 
   function aggregateEndpointStatus(endpoints) {
@@ -448,5 +636,14 @@
     };
   }
 
-  window.SGUProbe = { fetchStatus, resolveEndpoint, dohQuery, readHistory, listProviders, publicProviderUrl };
+  window.SGUProbe = {
+    fetchStatus,
+    simplePingStatus,
+    resolveEndpoint,
+    dohQuery,
+    readHistory,
+    listProviders,
+    publicProviderUrl,
+    wsProbe,
+  };
 })();

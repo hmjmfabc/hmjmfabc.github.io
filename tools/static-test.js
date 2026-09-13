@@ -111,6 +111,9 @@ const sandbox = {
     setItem: (k, v) => storage.set(k, String(v)),
     removeItem: (k) => storage.delete(k),
   },
+  location: { protocol: 'http:', hostname: '127.0.0.1', port: '8787', href: 'http://127.0.0.1:8787/', origin: 'http://127.0.0.1:8787' },
+  WebSocket: globalThis.WebSocket,
+  AbortController: globalThis.AbortController,
   document: {
     hidden: false,
     documentElement: htmlEl,
@@ -181,6 +184,22 @@ function warn(ok, label) {
   check(/远端 API/.test(els['backend-active'].textContent), `本地后端不可用时自动切换到远端 API（当前：${els['backend-active'].textContent}）`);
   check(/已自动切换/.test(els['backend-note'].textContent), `卡片给出自动切换说明（${els['backend-note'].textContent.slice(0, 40)}…）`);
   check(/远端 API/.test(els['source-note'].innerHTML), '顶部说明同步为远端 API');
+
+  console.log('\n校验选项③ 客户端简单 ping（真实执行 WebSocket 端口试探，约 5 秒）：');
+  const ping = await sandbox.window.SGUProbe.simplePingStatus();
+  const pings = ping.servers.flatMap((s2) => s2.endpoints);
+  console.log(`  结果：${ping.overallText} · ${ping.summary.endpointsOnline}/${ping.summary.endpoints} 在线 · ${ping.summary.endpointsUnknown} 未验证（耗时 ${ping.durationMs} ms）`);
+  for (const ep of pings) {
+    console.log(`   - ${ep.label.padEnd(5)} ${String(ep.state).padEnd(8)} 响应 ${String(ep.responseMs ?? '-').padStart(5)} ms 参考 ${String(ep.referenceMs ?? '超时').padStart(6)}  ${ep.message || '端口有服务应答'}`);
+  }
+  check(ping.ok === true && ping.source === 'client', '客户端简单 ping 返回 ok 且来源为 client');
+  check(ping.accuracy === 'low', '结果标记为低可信度（accuracy=low）');
+  check(pings.length === 6, '覆盖全部 6 条线路');
+  check(pings.every((e) => e.accuracy === 'low'), '每条线路都带低可信度标记');
+  check(pings.every((e) => ['online', 'offline', 'unknown'].includes(e.state)), '每条线路状态合法');
+  check(pings.some((e) => e.state === 'online'), '至少探测到一条在线线路');
+  check(pings.every((e) => e.note === undefined || !e.note), '不输出任何地址信息');
+  check(ping.durationMs < 15000, `耗时在可接受范围内（${ping.durationMs} ms）`);
 
   if (failures.length) {
     console.error(`\n❌ 静态模式校验未通过，失败 ${failures.length} 项\n`);

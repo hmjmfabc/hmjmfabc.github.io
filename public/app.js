@@ -40,7 +40,26 @@ const el = {
 
 /* ---------------- 后端（数据来源）选择 ---------------- */
 
-const CLIENT_PING_SUPPORTED = false; // 浏览器无法建立原始 TCP 连接，客户端 mcping 不可用
+/**
+ * 客户端简单 ping 是否可用：
+ *  - 需要 WebSocket 支持
+ *  - 页面必须是 http:// 打开（HTTPS 页面会被浏览器以混合内容拦截，结果不可信）
+ * 注意：浏览器无法执行标准 mcping（不能建立原始 TCP 连接），
+ *       这里只做「域名解析 + 端口是否有响应」的粗略试探，结果可能不准确。
+ */
+function clientPingAvailable() {
+  if (typeof WebSocket === 'undefined') return false;
+  if (typeof location === 'undefined') return false;
+  return location.protocol === 'http:';
+}
+
+function clientPingBlockReason() {
+  if (typeof WebSocket === 'undefined') return '当前浏览器不支持 WebSocket';
+  if (typeof location !== 'undefined' && location.protocol !== 'http:') {
+    return '当前页面是 HTTPS 打开的，浏览器会拦截到目标端口的连接，请改用 http:// 打开本页';
+  }
+  return '当前环境不支持';
+}
 
 function readBackendPref() {
   const fallback = { source: CONFIG.defaultBackend || 'server', provider: '' };
@@ -81,8 +100,9 @@ const BACKENDS = [
   {
     id: 'client',
     index: '③',
-    name: '客户端访问',
-    hint: '尝试在浏览器里直接完成 Minecraft 协议探测（mcping）。浏览器出于安全限制无法建立原始 TCP 连接，因此该方式暂不可用——这是浏览器的限制，不是配置问题。',
+    name: '客户端访问（简单 ping）',
+    hint: '在浏览器里做一次简单试探：解析域名后向目标端口发起 WebSocket 连接，看端口有没有响应。浏览器无法执行标准 mcping（不能建立原始 TCP 连接），因此只能判断「端口是否有人应答」，拿不到版本、人数、MOTD。',
+    warn: '结果可能不准确',
   },
 ];
 
@@ -96,7 +116,7 @@ function renderBackendCard() {
   const activeProvider = state.backend.activeProvider || (providers[0] && providers[0].name) || '';
 
   el.backendOptions.innerHTML = BACKENDS.map((backend) => {
-    const disabled = backend.id === 'client' && !CLIENT_PING_SUPPORTED;
+    const disabled = backend.id === 'client' && !clientPingAvailable();
     const checked = pref.source === backend.id;
     const subOptions =
       backend.id === 'remote' && providers.length
@@ -123,7 +143,8 @@ function renderBackendCard() {
           <span class="backend-name">
             <span class="backend-index">${backend.index}</span>${escapeHtml(backend.name)}
             ${backend.id === 'server' && !pref.source ? '<span class="backend-tag">默认</span>' : ''}
-            ${disabled ? '<span class="backend-tag tag-off">不可用</span>' : ''}
+            ${backend.warn ? `<span class="backend-tag tag-warn">${escapeHtml(backend.warn)}</span>` : ''}
+            ${disabled ? `<span class="backend-tag tag-off">${escapeHtml(clientPingBlockReason())}</span>` : ''}
             ${state.backend.via === backend.id ? '<span class="backend-tag tag-live">使用中</span>' : ''}
           </span>
           <span class="backend-hint">${escapeHtml(backend.hint)}</span>
@@ -163,7 +184,7 @@ function renderBackendCard() {
 
   // 当前生效说明（首次获取完成前不猜测）
   if (el.backendActive) {
-    const names = { server: '本地后端', remote: '远端 API', client: '客户端访问' };
+    const names = { server: '本地后端', remote: '远端 API', client: '客户端访问（简单 ping）' };
     const via = state.backend.via;
     if (!via) {
       el.backendActive.textContent = '正在检测…';
@@ -313,14 +334,22 @@ function renderMotd(ep) {
   return `<div class="motd" title="${plain}">${html}</div>`;
 }
 
+function state_isLowAccuracy() {
+  return state.source === 'client';
+}
+
 function renderEndpoint(ep, history, limit, intervalMs) {
   const state = ep.state || (ep.online ? 'online' : 'offline');
   const statusClass = state === 'online' ? 'up' : state === 'offline' ? 'down' : 'unknown';
   const stateText = state === 'online' ? '在线' : state === 'offline' ? '离线' : '未验证';
   const metas = [];
 
+  const lowAccuracy = ep.accuracy === 'low' || state_isLowAccuracy();
   if (state === 'online') {
     if (ep.latency != null) metas.push(`<span>延迟 <span class="meta-strong">${ep.latency} ms</span></span>`);
+    if (ep.responseMs != null) {
+      metas.push(`<span>端口响应 <span class="meta-strong">${ep.responseMs} ms</span></span>`);
+    }
     if (ep.version) metas.push(`<span>版本 <span class="meta-strong">${escapeHtml(ep.version)}</span></span>`);
     if (ep.players && (ep.players.online != null || ep.players.max != null)) {
       const online = ep.players.online ?? '-';
@@ -345,6 +374,7 @@ function renderEndpoint(ep, history, limit, intervalMs) {
             ${icon}
             <span class="badge kind-badge">${escapeHtml(ep.label)}</span>
             <span class="line-name"><span class="dot"></span>${stateText}</span>
+            ${lowAccuracy ? '<span class="accuracy-tag">结果可能不准确</span>' : ''}
           </div>
           <div class="extra-info">${metas.join('')}</div>
           ${renderMotd(ep)}
@@ -427,6 +457,9 @@ function renderSource(data) {
     el.sourceNote.innerHTML = `数据由远端 API 代理探测（IPv4 / IPv6 均由网络节点查询，节点：${name}）`;
   } else if (data.source === 'server') {
     el.sourceNote.innerHTML = '数据由本机后端实时探测（含延迟测量）';
+  } else if (data.source === 'client') {
+    el.sourceNote.innerHTML =
+      '数据来自浏览器「简单 ping」（仅探测端口是否有响应，<strong>结果可能不准确</strong>，仅供参考）';
   } else {
     el.sourceNote.textContent = '';
   }
@@ -574,12 +607,22 @@ async function fetchByBackend() {
     return data;
   };
 
-  if (pref.source === 'client') {
-    if (CLIENT_PING_SUPPORTED) {
-      // 预留：将来接入 WebSocket/TCP 网关后在此实现
-      return tryRemote(pref.provider);
+  if (pref.source === 'client' && clientPingAvailable()) {
+    try {
+      const data = await window.SGUProbe.simplePingStatus();
+      state.backend.via = 'client';
+      state.backend.activeProvider = null;
+      state.backend.notice = '当前使用「客户端简单 ping」：只检测域名解析与端口是否有响应，结果可能不准确，仅供参考。';
+      return Object.assign(data, { source: 'client' });
+    } catch (err) {
+      errors.push(`客户端简单 ping 失败（${err.message}）`);
+      state.backend.notice = `客户端简单 ping 不可用（${err.message}），已自动切换到远端 API。`;
+      const data = await tryRemote(null);
+      return data;
     }
-    errors.push('客户端访问（浏览器 mcping）不可用');
+  }
+  if (pref.source === 'client') {
+    state.backend.notice = `客户端简单 ping 暂不可用（${clientPingBlockReason()}），已自动切换到远端 API。`;
   }
 
   if (pref.source === 'server') {

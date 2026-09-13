@@ -45,6 +45,8 @@ const payload = {
     ],
     requestTimeoutMs: 9000,
     minIntervalMs: 1100, // 第三方接口限速（约 1 次/秒）
+    // 客户端“简单 ping”：向目标端口发起 WebSocket 试探的等待时间
+    clientPing: { timeoutMs: 4000 },
   },
   servers: config.servers.map((server) => ({
     id: server.id,

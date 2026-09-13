@@ -31,7 +31,10 @@ window.SGU_CONFIG = {
       }
     ],
     "requestTimeoutMs": 9000,
-    "minIntervalMs": 1100
+    "minIntervalMs": 1100,
+    "clientPing": {
+      "timeoutMs": 4000
+    }
   },
   "servers": [
     {

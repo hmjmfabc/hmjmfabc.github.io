@@ -441,6 +441,21 @@ a.item-link {
 
 .item-link .extra-info { margin-top: 4px; }
 
+/* 低可信度标记（客户端简单 ping） */
+.accuracy-tag {
+  padding: 2px 7px;
+  border-radius: 50rem;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.6;
+  white-space: nowrap;
+  background: rgba(248, 163, 6, 0.16);
+  color: #9a6400;
+}
+
+html[data-theme="dark"] .accuracy-tag,
+html[data-theme="dark"] .backend-tag.tag-warn { background: rgba(248, 163, 6, 0.2); color: #f0b64a; }
+
 .server-icon {
   width: 32px;
   height: 32px;
@@ -579,6 +594,7 @@ a.item-link {
 }
 
 .backend-tag.tag-off { background: rgba(220, 53, 69, 0.12); color: var(--down); }
+.backend-tag.tag-warn { background: rgba(248, 163, 6, 0.16); color: #9a6400; }
 .backend-tag.tag-live { background: rgba(47, 180, 106, 0.15); color: var(--up); }
 
 .backend-suboptions {
