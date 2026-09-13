@@ -43,6 +43,50 @@ function fetchHeaders(url) {
   });
 }
 
+function matchSelector(tags, sel) {
+  const s = String(sel).trim();
+  const idMatch = /^#([\w-]+)$/.exec(s);
+  if (idMatch) return tags.filter((x) => x.attrs.id === idMatch[1]);
+  const m = /^(?:([a-zA-Z][\w-]*))?(?:\.([\w-]+))?(?:\[([\w-]+)(?:="([^"]*)")?\])?$/.exec(s);
+  if (!m) return [];
+  const [, tag, cls, attr, val] = m;
+  return tags.filter((x) => {
+    if (tag && x.tag !== tag.toLowerCase()) return false;
+    if (cls && !String(x.attrs.class || '').split(/\s+/).includes(cls)) return false;
+    if (attr) {
+      if (!Object.prototype.hasOwnProperty.call(x.attrs, attr)) return false;
+      if (val !== undefined && x.attrs[attr] !== val) return false;
+    }
+    return true;
+  });
+}
+
+function parseTags(html) {
+  const out = [];
+  const re = /<([a-zA-Z][\w-]*)\b([^>]*)>/g;
+  let m;
+  while ((m = re.exec(html))) {
+    const attrs = {};
+    const attrRe = /([a-zA-Z-]+)(?:="([^"]*)")?/g;
+    let a;
+    while ((a = attrRe.exec(m[2]))) attrs[a[1]] = a[2] === undefined ? true : a[2];
+    out.push({
+      tag: m[1].toLowerCase(),
+      attrs,
+      handlers: {},
+      addEventListener(type, fn) { this.handlers[type] = fn; },
+      getAttribute(name) {
+        return Object.prototype.hasOwnProperty.call(attrs, name) ? attrs[name] : null;
+      },
+      hasAttribute(name) { return Object.prototype.hasOwnProperty.call(attrs, name); },
+      click() {
+        if (this.handlers.click) this.handlers.click({ preventDefault() {}, stopPropagation() {}, target: this });
+      },
+    });
+  }
+  return out;
+}
+
 function parseInputs(html) {
   const out = [];
   const re = /<input\b([^>]*)>/g;
@@ -100,7 +144,7 @@ function makeEl(id) {
     textContent: '',
     _html: '',
     _inputs: [],
-    _buttons: [],
+    _tags: [],
     handlers: {},
     classList: {
       _s: new Set(),
@@ -113,17 +157,12 @@ function makeEl(id) {
     setAttribute(name, value) { this.attrs[name] = value; },
     getAttribute(name) { return Object.prototype.hasOwnProperty.call(this.attrs, name) ? this.attrs[name] : null; },
     click() { if (this.handlers.click) this.handlers.click({ preventDefault() {} }); },
-    querySelectorAll(sel) {
-      const m = /input\[name="([^"]+)"\]/.exec(sel);
-      if (m) return (el._inputs || []).filter((i) => i.name === m[1]);
-      const cls = /^\.([a-zA-Z-]+)$/.exec(sel);
-      if (cls) return (el._buttons || []).filter((b) => String(b.attrs.class || '').split(/\s+/).includes(cls[1]));
-      return [];
-    },
+    querySelectorAll(sel) { return matchSelector(el._tags || [], sel); },
+    querySelector(sel) { return matchSelector(el._tags || [], sel)[0] || null; },
   };
   Object.defineProperty(el, 'innerHTML', {
     get() { return el._html; },
-    set(v) { el._html = String(v); el._inputs = parseInputs(el._html); el._buttons = parseButtons(el._html); },
+    set(v) { el._html = String(v); el._inputs = parseInputs(el._html); el._tags = parseTags(el._html); },
   });
   return el;
 }
@@ -312,59 +351,84 @@ function expectServerStatus(endpoints) {
   check(/footer \.footer-copyright\s*\{[^}]*font-size:\s*1[5-9]px/.test(css), '版权行字号大于其它页脚文字');
   check(/id="last-updated"/.test(page) && /id="countdown-text"/.test(page), '页脚保留最后更新时间与刷新倒计时两行');
 
-  console.log('\n[6/9] 校验页面底部的“后端选择”卡片');
-  const backendHtml = els['backend-options'].innerHTML;
+  console.log('\n[6/9] 校验页面底部的“后端选择”下拉卡片');
   check(/id="backend-card"/.test(page), '页面存在“后端选择”卡片');
-  check((page.match(/后端选择/g) || []).length >= 1, '卡片标题为「后端选择」');
-  check(els['backend-card'] !== undefined && backendHtml.length > 0, '卡片内容已渲染');
-  check(/①[\s\S]*?远端 API/.test(backendHtml), '包含选项① 远端 API');
-  check(/②[\s\S]*?SGU物理机后端/.test(backendHtml), '包含选项② SGU物理机后端（已改名）');
-  check(/③[\s\S]*?客户端访问/.test(backendHtml), '包含选项③ 客户端访问');
-  check((backendHtml.match(/class="backend-hint"/g) || []).length >= 3, '每个选项都带提示文字');
-  check(/mcsrvstat\.us/.test(backendHtml) && /mcstatus\.io/.test(backendHtml), '选项①下列出了所有可用 API 子选项');
-  check(/name="backend-provider"/.test(backendHtml), 'API 子选项使用单选按钮');
-  check(/tag-warn[\s\S]*?结果可能不准确/.test(backendHtml), '选项③特别标注「结果可能不准确」');
-  check(/原始 TCP 连接/.test(backendHtml) && /标准 mcping/.test(backendHtml), '选项③给出浏览器限制的说明');
-  check(/简单 ping/.test(backendHtml) && /WebSocket/.test(backendHtml), '选项③说明采用「向端口发起 WebSocket 试探」的方式');
+  check(/后端选择/.test(page), '卡片标题为「后端选择」');
+  const backendHtml = els['backend-options'].innerHTML;
+  check(backendHtml.length > 0, '卡片内容已渲染');
+  check(/id="backend-toggle"/.test(backendHtml), '①②③ 渲染为下拉触发器');
+
+  const items = els['backend-options'].querySelectorAll('.backend-item[data-value]');
+  check(items.length === 3, `下拉菜单含 3 个选项（实际 ${items.length}）`);
+  const labels = items.map((i) => i.attrs['data-value']).join(',');
+  check(labels === 'remote,server,client', `选项顺序为 ①②③（${labels}）`);
+  check(
+    /远端 API/.test(backendHtml) && /SGU物理机后端/.test(backendHtml) && /客户端访问/.test(backendHtml),
+    '三个选项名称正确'
+  );
+  check((backendHtml.match(/class="backend-item-hint"/g) || []).length >= 3, '每个选项都带提示文字');
+
+  // 默认收起的下拉菜单
+  check(/id="backend-menu"[^>]*\shidden/.test(backendHtml), '下拉菜单默认收起');
+  check(
+    els['backend-options'].querySelector('#backend-toggle').attrs['aria-expanded'] === 'false',
+    '触发器 aria-expanded=false'
+  );
+  const toggleLabel = backendHtml.slice(backendHtml.indexOf('backend-select-value'), backendHtml.indexOf('backend-select-value') + 320);
+  check(/远端 API/.test(toggleLabel), '触发器显示当前选项（① 远端 API）');
+  check(/默认/.test(toggleLabel), '触发器标注「默认」');
+
+  // ② 停用
+  const serverItem = items.find((i) => i.attrs['data-value'] === 'server');
+  check(serverItem && serverItem.hasAttribute('disabled'), '②SGU物理机后端在下拉中不可选（置灰）');
+  check(/备案中，暂不可用/.test(backendHtml), '②标注「备案中，暂不可用」');
+  check(/2027 年 1 月/.test(backendHtml) && /ipv6\.swordsman\.top:8787/.test(backendHtml), '②注明备案时间与将来的服务地址');
+
+  // ③ 警示
+  check(/结果可能不准确/.test(backendHtml), '③特别标注「结果可能不准确」');
+  check(/原始 TCP 连接/.test(backendHtml) && /标准 mcping/.test(backendHtml), '③给出浏览器限制的说明');
+
+  // 点击触发器 → 展开
   {
-    const inputs = els['backend-options'].querySelectorAll('input[name="backend-source"]');
-    check(inputs.length === 3, `三个后端选项共 3 个单选项（实际 ${inputs.length}）`);
-    const checked = inputs.filter((i) => i.checked);
-    check(checked.length === 1 && checked[0].value === 'remote', `默认选中①远端 API（实际 ${checked.map((c) => c.value).join(',') || '无'}）`);
+    const toggle = els['backend-options'].querySelector('#backend-toggle');
+    toggle.click();
+    const opened = els['backend-options'].innerHTML;
+    check(!/id="backend-menu"[^>]*\shidden/.test(opened), '点击触发器后菜单展开');
     check(
-      inputs.find((i) => i.value === 'server').disabled === true,
-      '②SGU物理机后端因合规性考虑被置灰、不可点击'
+      els['backend-options'].querySelector('#backend-toggle').attrs['aria-expanded'] === 'true',
+      '展开后 aria-expanded=true'
     );
-    check(/tag-off[\s\S]{0,40}备案中，暂不可用/.test(backendHtml), '②标注「备案中，暂不可用」');
-    check(/2027 年 1 月/.test(backendHtml) && /ipv6\.swordsman\.top:8787/.test(backendHtml), '②注明备案时间与将来的服务地址');
-    check(
-      inputs.find((i) => i.value === 'client').disabled === true,
-      '③在非 http 页面（当前测试环境）下被禁用'
-    );
-    check(/tag-off/.test(backendHtml), '③禁用时给出原因标签');
-    const providerInputs = els['backend-options'].querySelectorAll('input[name="backend-provider"]');
-    check(providerInputs.length === 2, `选项①下有 2 个 API 子选项（实际 ${providerInputs.length}）`);
+    // 点击②（disabled）不应切换
+    const before = JSON.parse(global.localStorage.getItem('sgu-backend') || '{"source":"remote"}').source;
+    const disabledItem = els['backend-options'].querySelectorAll('.backend-item[data-value]').find((i) => i.attrs['data-value'] === 'server');
+    disabledItem.click();
+    const after = JSON.parse(global.localStorage.getItem('sgu-backend') || '{"source":"remote"}').source;
+    check(before === after && after !== 'server', '点击置灰的②不会切换数据来源');
+    // 再点触发器 → 收起
+    els['backend-options'].querySelector('#backend-toggle').click();
+    check(/id="backend-menu"[^>]*\shidden/.test(els['backend-options'].innerHTML), '再次点击收起菜单');
   }
-  check(/远端 API|SGU物理机后端/.test(els['backend-active'].textContent), `卡片显示当前生效来源（${els['backend-active'].textContent}）`);
+
+  // ① 的接口下拉：仅在选中①时出现
+  check(/id="provider-toggle"/.test(backendHtml), '选中①时显示探测接口下拉');
+  check(/id="provider-menu"[^>]*\shidden/.test(backendHtml), '接口下拉默认收起');
+  {
+    const pToggle = els['backend-options'].querySelector('#provider-toggle');
+    pToggle.click();
+    check(!/id="provider-menu"[^>]*\shidden/.test(els['backend-options'].innerHTML), '点击后接口下拉展开');
+    const pItems = els['backend-options'].querySelectorAll('.backend-item[data-provider]');
+    check(pItems.length === 2, `接口下拉含 2 个接口（实际 ${pItems.length}）`);
+    check(/mcsrvstat\.us/.test(els['backend-options'].innerHTML) && /mcstatus\.io/.test(els['backend-options'].innerHTML), '列出全部可用接口');
+    const second = pItems.find((i) => i.attrs['data-provider'] === 'mcstatus.io');
+    second.click();
+    const saved = JSON.parse(global.localStorage.getItem('sgu-backend') || '{}');
+    check(saved.provider === 'mcstatus.io', `选择接口后写入 localStorage（${JSON.stringify(saved)}）`);
+    check(els['backend-options'].querySelector('#provider-menu') === null || /id="provider-menu"[^>]*\shidden/.test(els['backend-options'].innerHTML), '选择后接口下拉自动收起');
+  }
+  check(/SGU物理机后端|远端 API/.test(els['backend-active'].textContent), `卡片显示当前生效来源（${els['backend-active'].textContent}）`);
   check(/远端 API|第三方|SGU物理机后端/.test(els['source-note'].innerHTML), '顶部说明当前数据来源');
 
-  // 模拟选择 API 子接口
-  {
-    const inputs = els['backend-options'].querySelectorAll('input[name="backend-source"]');
-    const remote = inputs.find((i) => i.value === 'remote');
-    remote.checked = true;
-    remote.dispatchChange();
-    const saved = JSON.parse(global.localStorage.getItem('sgu-backend') || '{}');
-    check(saved.source === 'remote', `选择远端 API 后写入 localStorage（${JSON.stringify(saved)}）`);
-    const providerInputs = els['backend-options'].querySelectorAll('input[name="backend-provider"]');
-    const first = providerInputs[0];
-    first.checked = true;
-    first.dispatchChange();
-    const saved2 = JSON.parse(global.localStorage.getItem('sgu-backend') || '{}');
-    check(saved2.provider === first.value, `选择子接口后写入 localStorage（${saved2.provider}）`);
-  }
-
-  console.log('\n[7/9] 校验多语言与折叠式子选项');
+  console.log('\n[7/9] 校验多语言切换');
   // 语言按钮与菜单
   check(/id="lang-toggle"/.test(page) && /id="lang-menu"/.test(page), '页面存在语言切换按钮与菜单');
   check(/id="lang-current"/.test(page), '按钮显示当前语言简称');
@@ -381,28 +445,11 @@ function expectServerStatus(endpoints) {
   );
   check(I18N.getLang() === 'zh-CN', `测试环境语言为简体中文（${I18N.getLang()}）`);
 
-  // 折叠式接口子选项：默认收起
-  const backendHtmlNow = els['backend-options'].innerHTML;
-  check(/class="backend-suboptions"\s+hidden/.test(backendHtmlNow), '选项①的探测接口列表默认折叠');
-  check(/class="backend-subtoggle"/.test(backendHtmlNow), '存在展开按钮');
-  check(/backend-subcurrent/.test(backendHtmlNow), '展开按钮上显示当前接口');
-  {
-    const toggles = els['backend-options'].querySelectorAll('.backend-subtoggle');
-    check(toggles.length === 1, `共 1 个展开按钮（实际 ${toggles.length}）`);
-    if (toggles.length) {
-      check(toggles[0].attrs['aria-expanded'] === 'false', '默认 aria-expanded=false');
-      toggles[0].click();
-      const expandedHtml = els['backend-options'].innerHTML;
-      check(!/class="backend-suboptions"\s+hidden/.test(expandedHtml), '点击后接口列表展开');
-      check(
-        els['backend-options'].querySelectorAll('.backend-subtoggle')[0].attrs['aria-expanded'] === 'true',
-        '展开后 aria-expanded=true'
-      );
-      // 再点一次收起
-      els['backend-options'].querySelectorAll('.backend-subtoggle')[0].click();
-      check(/class="backend-suboptions"\s+hidden/.test(els['backend-options'].innerHTML), '再次点击收起');
-    }
-  }
+  // 下拉式的子选项校验见 [6/9]；这里补一条：语言切换后下拉文案也随之改变
+  check(
+    /id="backend-toggle"/.test(els['backend-options'].innerHTML),
+    '后端下拉在语言切换后仍正常渲染'
+  );
 
   // 切换语言：点击菜单项，界面文案应整体切换
   {

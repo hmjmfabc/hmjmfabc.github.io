@@ -259,7 +259,6 @@ function renderBackendCard() {
     (CONFIG.probe && Array.isArray(CONFIG.probe.providers) && CONFIG.probe.providers) ||
     (window.SGUProbe && window.SGUProbe.listProviders ? window.SGUProbe.listProviders() : []);
   const activeProvider = state.backend.activeProvider || (providers[0] && providers[0].name) || '';
-  const expanded = state.backend.expandedRemote;
 
   const backendName = (b) => {
     const v = t(`backend.${b.id}.name`);
@@ -269,124 +268,140 @@ function renderBackendCard() {
     const v = t(`backend.${b.id}.${key}`);
     return v === `backend.${b.id}.${key}` ? fallback : v;
   };
+  const tag = (text, cls) => `<span class="backend-tag${cls ? ' ' + cls : ''}">${escapeHtml(text)}</span>`;
 
-  el.backendOptions.innerHTML = BACKENDS.map((backend) => {
+  const current = backendById(pref.source) || BACKENDS[0];
+  const currentName = backendName(current);
+  const currentHint = backendText(current, 'hint', current.hint);
+  const currentDisabled = backendDisabledReason(current);
+  const isDefault = (id) => id === (CONFIG.defaultBackend || 'remote');
+
+  // ---------- 主下拉：选项 ①②③ ----------
+  const menuItems = BACKENDS.map((backend) => {
     const disabledReason = backendDisabledReason(backend);
     const disabled = !!disabledReason;
-    const checked = pref.source === backend.id;
-    const name = backendName(backend);
-    const hint = backendText(backend, 'hint', backend.hint);
-
-    // 选项①的探测接口列表：默认折叠，点击「选择探测接口」才展开
-    let subBlock = '';
-    if (backend.id === 'remote' && providers.length) {
-      const options = providers
-        .map(
-          (p) => `
-          <label class="backend-suboption">
-            <input type="radio" name="backend-provider" value="${escapeHtml(p.name)}"${
-              pref.provider === p.name || (!pref.provider && activeProvider === p.name) ? ' checked' : ''
-            }>
-            <span class="backend-sub-body">
-              <span class="backend-sub-name">${escapeHtml(p.name)}</span>
-              <span class="backend-sub-note">${escapeHtml(p.note || '')}</span>
-            </span>
-          </label>`
-        )
-        .join('');
-      const current = pref.provider || activeProvider;
-      subBlock = `
-          <div class="backend-subwrap">
-            <button type="button" class="backend-subtoggle" aria-expanded="${expanded ? 'true' : 'false'}"${
-              disabled ? ' disabled' : ''
-            }>
-              <span class="caret" aria-hidden="true">▸</span>
-              <span>${escapeHtml(t('backend.subtoggle'))}</span>
-              ${current ? `<span class="backend-subcurrent">${escapeHtml(current)}</span>` : ''}
-            </button>
-            <div class="backend-suboptions"${expanded ? '' : ' hidden'}>${options}</div>
-          </div>`;
-    }
-
+    const selected = backend.id === pref.source;
     return `
-      <label class="backend-option${checked ? ' is-active' : ''}${disabled ? ' is-disabled' : ''}" data-backend="${
-      backend.id
-    }">
-        <input type="radio" name="backend-source" value="${backend.id}"${checked ? ' checked' : ''}${
+      <button type="button" class="backend-item${selected ? ' is-selected' : ''}${disabled ? ' is-disabled' : ''}"
+              role="option" aria-selected="${selected}" data-value="${escapeHtml(backend.id)}"${
       disabled ? ' disabled' : ''
     }>
-        <span class="backend-body">
-          <span class="backend-name">
-            <span class="backend-index">${escapeHtml(backend.index || '')}</span>${escapeHtml(name)}
-            ${
-              backend.id === (CONFIG.defaultBackend || 'remote')
-                ? `<span class="backend-tag">${escapeHtml(t('backend.default'))}</span>`
-                : ''
-            }
-            ${
-              backend.warn
-                ? `<span class="backend-tag tag-warn">${escapeHtml(backendText(backend, 'warn', backend.warn))}</span>`
-                : ''
-            }
-            ${
-              disabled
-                ? `<span class="backend-tag tag-off">${escapeHtml(
-                    backendText(backend, 'disabled', disabledReason)
-                  )}</span>`
-                : ''
-            }
-            ${
-              state.backend.via === backend.id
-                ? `<span class="backend-tag tag-live">${escapeHtml(t('backend.inUse'))}</span>`
-                : ''
-            }
-          </span>
-          <span class="backend-hint">${escapeHtml(hint)}</span>
-          ${backend.publicUrl && !disabled ? `<span class="backend-hint">${escapeHtml(backend.publicUrl)}</span>` : ''}
-          ${subBlock}
+        <span class="backend-item-head">
+          <span class="backend-index">${escapeHtml(backend.index || '')}</span>
+          <span class="backend-item-name">${escapeHtml(backendName(backend))}</span>
+          ${isDefault(backend.id) ? tag(t('backend.default')) : ''}
+          ${backend.warn ? tag(backendText(backend, 'warn', backend.warn), 'tag-warn') : ''}
+          ${disabled ? tag(backendText(backend, 'disabled', disabledReason), 'tag-off') : ''}
+          ${state.backend.via === backend.id ? tag(t('backend.inUse'), 'tag-live') : ''}
         </span>
-      </label>`;
+        <span class="backend-item-hint">${escapeHtml(backendText(backend, 'hint', backend.hint))}</span>
+      </button>`;
   }).join('');
 
-  // 选择数据来源
-  el.backendOptions.querySelectorAll('input[name="backend-source"]').forEach((input) => {
-    input.addEventListener('change', () => {
-      if (!input.checked) return;
-      const chosen = backendById(input.value);
-      const blocked = chosen ? backendDisabledReason(chosen) : null;
-      if (blocked) {
-        renderBackendCard();
-        return;
-      }
-      state.backend.pref = { source: input.value, provider: state.backend.pref.provider };
-      saveBackendPref(state.backend.pref);
-      renderBackendCard();
-      loadStatus({ force: true });
-    });
-  });
+  // ---------- 次级下拉：远端 API 的具体接口（仅选中①时出现） ----------
+  let providerBlock = '';
+  if (pref.source === 'remote' && providers.length) {
+    const chosen = pref.provider || activeProvider;
+    const items = providers
+      .map(
+        (p) => `
+        <button type="button" class="backend-item${p.name === chosen ? ' is-selected' : ''}"
+                role="option" aria-selected="${p.name === chosen}" data-provider="${escapeHtml(p.name)}">
+          <span class="backend-item-head">
+            <span class="backend-item-name mono">${escapeHtml(p.name)}</span>
+            ${p.name === chosen ? tag(t('backend.inUse'), 'tag-live') : ''}
+          </span>
+          <span class="backend-item-hint">${escapeHtml(p.note || '')}</span>
+        </button>`
+      )
+      .join('');
+    providerBlock = `
+      <div class="backend-field backend-field-sub">
+        <span class="backend-field-label">${escapeHtml(t('backend.subtoggle'))}</span>
+        <div class="backend-dropdown">
+          <button type="button" class="backend-select backend-select-sm" id="provider-toggle"
+                  aria-haspopup="listbox" aria-expanded="${state.backend.providerMenuOpen ? 'true' : 'false'}">
+            <span class="backend-select-value"><span class="mono">${escapeHtml(chosen || '—')}</span></span>
+            <span class="caret" aria-hidden="true">▾</span>
+          </button>
+          <div class="backend-menu backend-menu-sub" id="provider-menu" role="listbox"${
+            state.backend.providerMenuOpen ? '' : ' hidden'
+          }>${items}</div>
+        </div>
+      </div>`;
+  }
 
-  // 选择具体探测接口
-  el.backendOptions.querySelectorAll('input[name="backend-provider"]').forEach((input) => {
-    input.addEventListener('change', () => {
-      if (!input.checked) return;
-      state.backend.pref = { source: 'remote', provider: input.value };
-      saveBackendPref(state.backend.pref);
-      renderBackendCard();
-      loadStatus({ force: true });
-    });
-  });
+  el.backendOptions.innerHTML = `
+    <div class="backend-field">
+      <div class="backend-dropdown">
+        <button type="button" class="backend-select" id="backend-toggle"
+                aria-haspopup="listbox" aria-expanded="${state.backend.menuOpen ? 'true' : 'false'}">
+          <span class="backend-select-value">
+            <span class="backend-index">${escapeHtml(current.index || '')}</span>
+            <span class="backend-select-name">${escapeHtml(currentName)}</span>
+            ${isDefault(current.id) ? tag(t('backend.default')) : ''}
+            ${state.backend.via === current.id ? tag(t('backend.inUse'), 'tag-live') : ''}
+            ${currentDisabled ? tag(currentDisabled, 'tag-off') : ''}
+          </span>
+          <span class="caret" aria-hidden="true">▾</span>
+        </button>
+        <div class="backend-menu" id="backend-menu" role="listbox"${
+          state.backend.menuOpen ? '' : ' hidden'
+        }>${menuItems}</div>
+      </div>
+    </div>
+    <p class="backend-current-hint">${escapeHtml(currentHint)}</p>
+    ${providerBlock}`;
 
-  // 展开 / 收起接口列表（点击不触发父级选项选中）
-  el.backendOptions.querySelectorAll('.backend-subtoggle').forEach((button) => {
-    button.addEventListener('click', (event) => {
+  // ---------- 事件绑定 ----------
+  const mainToggle = el.backendOptions.querySelector('#backend-toggle');
+  if (mainToggle) {
+    mainToggle.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
-      state.backend.expandedRemote = !state.backend.expandedRemote;
+      state.backend.menuOpen = !state.backend.menuOpen;
+      state.backend.providerMenuOpen = false;
       renderBackendCard();
+    });
+  }
+  const providerToggle = el.backendOptions.querySelector('#provider-toggle');
+  if (providerToggle) {
+    providerToggle.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      state.backend.providerMenuOpen = !state.backend.providerMenuOpen;
+      renderBackendCard();
+    });
+  }
+
+  el.backendOptions.querySelectorAll('.backend-item[data-value]').forEach((item) => {
+    item.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const value = item.getAttribute('data-value');
+      const chosen = backendById(value);
+      if (!chosen || backendDisabledReason(chosen)) return; // 停用项不可选
+      state.backend.menuOpen = false;
+      state.backend.pref = { source: value, provider: state.backend.pref.provider };
+      saveBackendPref(state.backend.pref);
+      renderBackendCard();
+      loadStatus({ force: true });
     });
   });
 
-  // 当前生效说明（首次获取完成前不猜测）
+  el.backendOptions.querySelectorAll('.backend-item[data-provider]').forEach((item) => {
+    item.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      state.backend.providerMenuOpen = false;
+      state.backend.pref = { source: 'remote', provider: item.getAttribute('data-provider') };
+      saveBackendPref(state.backend.pref);
+      renderBackendCard();
+      loadStatus({ force: true });
+    });
+  });
+
+  // 当前生效说明
   if (el.backendActive) {
     const via = state.backend.via;
     if (!via) {
@@ -435,7 +450,8 @@ let state = {
     pref: { source: 'remote', provider: '' }, // 用户选择（默认远端 API）
     via: null, // 本次实际使用的数据来源
     activeProvider: null, // 远端模式下实际生效的接口
-    expandedRemote: false, // ① 的接口子选项是否展开
+    menuOpen: false, // 主下拉（①②③）是否展开
+    providerMenuOpen: false, // 接口下拉是否展开
     notice: '', // 自动切换等提示
   },
 };

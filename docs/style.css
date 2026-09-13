@@ -606,87 +606,105 @@ html[data-theme="dark"] .backend-tag.tag-warn { background: rgba(248, 163, 6, 0.
   color: var(--muted);
 }
 
-/* ---------------- 后端选择卡片（页面底部） ---------------- */
+/* ---------------- 后端选择卡片（页面底部，下拉式） ---------------- */
 
-.backend-card {
-  margin-top: 32px;
-  padding: 18px 20px 16px;
-}
+.backend-card { margin-top: 32px; padding: 18px 20px 16px; }
 
-.backend-title {
-  margin: 0 0 4px;
-  font-size: 18px;
-  font-weight: 700;
-}
+.backend-title { margin: 0 0 4px; font-size: 18px; font-weight: 700; }
 
-.backend-subtitle {
-  margin: 0 0 14px;
-  font-size: 13px;
-  color: var(--muted);
-}
-
+.backend-subtitle { margin: 0 0 14px; font-size: 13px; color: var(--muted); }
 .backend-subtitle strong { color: var(--accent); }
 
-.backend-options {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
+.backend-options { display: flex; flex-direction: column; gap: 12px; }
 
-.backend-option {
+.backend-field { display: flex; flex-direction: column; gap: 6px; }
+.backend-field-sub { margin-top: 2px; padding-top: 12px; border-top: 1px dashed var(--border); }
+
+.backend-field-label { font-size: 12.5px; font-weight: 600; color: var(--muted); }
+
+.backend-dropdown { position: relative; max-width: 460px; }
+
+/* 下拉触发器 */
+.backend-select {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
+  justify-content: space-between;
   gap: 10px;
-  padding: 12px 14px;
+  width: 100%;
+  padding: 11px 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--card-bg);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  text-align: left;
   cursor: pointer;
-  transition: border-color 0.15s ease, background-color 0.15s ease;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
 }
 
-.backend-option:hover { background: var(--hover); }
+.backend-select:hover { background: var(--hover); border-color: var(--accent); }
+.backend-select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.backend-select[aria-expanded="true"] { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.backend-select-sm { padding: 8px 12px; font-size: 13.5px; }
 
-.backend-option.is-active {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+.backend-select-value { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; min-width: 0; }
+.backend-select-name { font-weight: 700; }
+.backend-select .caret { flex: 0 0 auto; font-size: 12px; color: var(--muted); transition: transform 0.15s ease; }
+.backend-select[aria-expanded="true"] .caret { transform: rotate(180deg); }
+
+/* 下拉菜单 */
+.backend-menu {
+  position: absolute;
+  z-index: 60;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  max-height: 340px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card-bg);
+  box-shadow: var(--shadow);
 }
 
-.backend-option.is-disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
+.backend-menu[hidden] { display: none; }
+.backend-menu-sub { max-height: 280px; }
 
-.backend-option input[type="radio"] {
-  margin: 3px 0 0;
-  flex: 0 0 auto;
-  accent-color: var(--accent);
-}
-
-.backend-body {
+.backend-item {
   display: flex;
   flex-direction: column;
   gap: 3px;
-  min-width: 0;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
-.backend-name {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-  font-size: 15px;
-  font-weight: 600;
-}
+.backend-item + .backend-item { margin-top: 2px; }
+.backend-item:hover { background: var(--hover); }
 
-.backend-index { color: var(--accent); }
+.backend-item.is-selected { background: var(--accent-soft); }
 
-.backend-hint {
-  font-size: 12.5px;
-  line-height: 1.6;
-  color: var(--muted);
-}
+.backend-item.is-disabled { opacity: 0.6; cursor: not-allowed; }
+.backend-item.is-disabled:hover { background: transparent; }
 
+.backend-item-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 14.5px; font-weight: 600; }
+.backend-item-name { font-weight: 700; }
+.backend-item-name.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13.5px; }
+.backend-item-hint { font-size: 12px; line-height: 1.55; color: var(--muted); }
+
+.backend-index { color: var(--accent); font-weight: 700; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+/* 标签 */
 .backend-tag {
   padding: 2px 7px;
   border-radius: 50rem;
@@ -700,74 +718,16 @@ html[data-theme="dark"] .backend-tag.tag-warn { background: rgba(248, 163, 6, 0.
 .backend-tag.tag-warn { background: rgba(248, 163, 6, 0.16); color: #9a6400; }
 .backend-tag.tag-live { background: rgba(47, 180, 106, 0.15); color: var(--up); }
 
-.backend-subwrap { margin-top: 8px; }
-
-.backend-subtoggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 11px;
-  border: 1px solid var(--border);
-  border-radius: 50rem;
-  background: var(--card-bg);
-  color: var(--text);
-  font-size: 12.5px;
-  font-family: inherit;
-  cursor: pointer;
-  transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
-}
-
-.backend-subtoggle:hover { border-color: var(--accent); color: var(--accent); background: var(--hover); }
-.backend-subtoggle:disabled { opacity: 0.55; cursor: not-allowed; }
-.backend-subtoggle .caret { display: inline-block; transition: transform 0.15s ease; font-size: 11px; }
-.backend-subtoggle[aria-expanded="true"] .caret { transform: rotate(90deg); }
-
-.backend-subcurrent {
-  padding: 1px 7px;
-  border-radius: 50rem;
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-size: 11px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-}
-
-.backend-suboptions {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: 8px;
-  padding-left: 2px;
-  border-left: 2px solid var(--border);
-}
-
-.backend-suboptions[hidden] { display: none; }
-
-.backend-suboption {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 7px 10px;
+/* 当前选项说明 */
+.backend-current-hint {
+  margin: 0;
+  padding: 10px 12px;
   border-radius: 8px;
-  cursor: pointer;
+  background: var(--hover);
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--muted);
 }
-
-.backend-suboption:hover { background: var(--hover); }
-
-.backend-suboption input[type="radio"] {
-  margin: 3px 0 0;
-  flex: 0 0 auto;
-  accent-color: var(--accent);
-}
-
-.backend-sub-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-
-.backend-sub-name {
-  font-size: 13.5px;
-  font-weight: 600;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-}
-
-.backend-sub-note { font-size: 12px; line-height: 1.55; color: var(--muted); }
 
 .backend-note {
   display: none;
@@ -844,6 +804,7 @@ footer .footer-copyright {
   .monitor-list .col-right { flex: 1 1 auto; max-width: none; }
   .group-title { font-size: 17px; }
   .backend-card { padding: 14px 14px 12px; margin-top: 24px; }
-  .backend-option { padding: 10px 12px; gap: 8px; }
   .backend-title { font-size: 16px; }
+  .backend-select { padding: 10px 12px; font-size: 14px; }
+  .backend-menu { max-height: 300px; }
 }

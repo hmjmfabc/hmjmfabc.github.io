@@ -17,6 +17,50 @@ const PUB = path.join(__dirname, '..', 'public');
 
 /* ---------------- 极简 DOM / 浏览器桩 ---------------- */
 
+function matchSelector(tags, sel) {
+  const s = String(sel).trim();
+  const idMatch = /^#([\w-]+)$/.exec(s);
+  if (idMatch) return tags.filter((x) => x.attrs.id === idMatch[1]);
+  const m = /^(?:([a-zA-Z][\w-]*))?(?:\.([\w-]+))?(?:\[([\w-]+)(?:="([^"]*)")?\])?$/.exec(s);
+  if (!m) return [];
+  const [, tag, cls, attr, val] = m;
+  return tags.filter((x) => {
+    if (tag && x.tag !== tag.toLowerCase()) return false;
+    if (cls && !String(x.attrs.class || '').split(/\s+/).includes(cls)) return false;
+    if (attr) {
+      if (!Object.prototype.hasOwnProperty.call(x.attrs, attr)) return false;
+      if (val !== undefined && x.attrs[attr] !== val) return false;
+    }
+    return true;
+  });
+}
+
+function parseTags(html) {
+  const out = [];
+  const re = /<([a-zA-Z][\w-]*)\b([^>]*)>/g;
+  let m;
+  while ((m = re.exec(html))) {
+    const attrs = {};
+    const attrRe = /([a-zA-Z-]+)(?:="([^"]*)")?/g;
+    let a;
+    while ((a = attrRe.exec(m[2]))) attrs[a[1]] = a[2] === undefined ? true : a[2];
+    out.push({
+      tag: m[1].toLowerCase(),
+      attrs,
+      handlers: {},
+      addEventListener(type, fn) { this.handlers[type] = fn; },
+      getAttribute(name) {
+        return Object.prototype.hasOwnProperty.call(attrs, name) ? attrs[name] : null;
+      },
+      hasAttribute(name) { return Object.prototype.hasOwnProperty.call(attrs, name); },
+      click() {
+        if (this.handlers.click) this.handlers.click({ preventDefault() {}, stopPropagation() {}, target: this });
+      },
+    });
+  }
+  return out;
+}
+
 function parseInputs(html) {
   const out = [];
   const re = /<input\b([^>]*)>/g;
@@ -72,7 +116,7 @@ function makeEl(id) {
     textContent: '',
     _html: '',
     _inputs: [],
-    _buttons: [],
+    _tags: [],
     handlers: {},
     classList: {
       _s: new Set(),
@@ -85,17 +129,12 @@ function makeEl(id) {
     setAttribute(k, v) { this.attrs[k] = v; },
     getAttribute(k) { return Object.prototype.hasOwnProperty.call(this.attrs, k) ? this.attrs[k] : null; },
     click() { if (this.handlers.click) this.handlers.click({ preventDefault() {} }); },
-    querySelectorAll(sel) {
-      const m = /input\[name="([^"]+)"\]/.exec(sel);
-      if (m) return (el._inputs || []).filter((i) => i.name === m[1]);
-      const cls = /^\.([a-zA-Z-]+)$/.exec(sel);
-      if (cls) return (el._buttons || []).filter((b) => String(b.attrs.class || '').split(/\s+/).includes(cls[1]));
-      return [];
-    },
+    querySelectorAll(sel) { return matchSelector(el._tags || [], sel); },
+    querySelector(sel) { return matchSelector(el._tags || [], sel)[0] || null; },
   };
   Object.defineProperty(el, 'innerHTML', {
     get() { return el._html; },
-    set(v) { el._html = String(v); el._inputs = parseInputs(el._html); el._buttons = parseButtons(el._html); },
+    set(v) { el._html = String(v); el._inputs = parseInputs(el._html); el._tags = parseTags(el._html); },
   });
   return el;
 }
@@ -210,16 +249,25 @@ function warn(ok, label) {
   // 默认选择「② 本地后端」，但该环境没有后端 → 应自动切换到远端 API
   const backendHtml = els['backend-options'].innerHTML;
   check(
-    /①[\s\S]*?远端 API/.test(backendHtml) && /②[\s\S]*?SGU物理机后端/.test(backendHtml),
-    '底部“后端选择”卡片已渲染（②已更名为 SGU物理机后端）'
+    /id="backend-toggle"/.test(backendHtml) && /①/.test(backendHtml) && /远端 API/.test(backendHtml),
+    '底部“后端选择”下拉已渲染（① 远端 API）'
   );
-  check(/使用中/.test(backendHtml), '卡片标注了当前实际生效的数据来源');
+  check(/id="backend-menu"/.test(backendHtml), '下拉菜单容器存在');
+  {
+    const items = els['backend-options'].querySelectorAll('.backend-item[data-value]');
+    check(items.length === 3, `下拉含 ①②③ 三项（实际 ${items.length}）`);
+    const srv = items.find((i) => i.attrs['data-value'] === 'server');
+    check(!!srv && srv.hasAttribute('disabled'), '②SGU物理机后端置灰不可选');
+  }
+  check(/使用中/.test(backendHtml), '卡片标注了当前实际生效的数据来源（使用中标签）');
   check(/远端 API/.test(els['backend-active'].textContent), `本地后端不可用时自动切换到远端 API（当前：${els['backend-active'].textContent}）`);
   check(/远端 API/.test(els['source-note'].innerHTML), '顶部说明同步为远端 API');
   check(
     /备案中，暂不可用/.test(backendHtml) && /2027 年 1 月/.test(backendHtml),
     '②SGU物理机后端标注备案中且不可点击'
   );
+  check(/id="provider-toggle"/.test(backendHtml), '① 的探测接口下拉已渲染');
+  check(/结果可能不准确/.test(backendHtml), '③标注结果可能不准确');
 
   console.log('\n校验选项③ 客户端简单 ping（真实执行 WebSocket 端口试探，约 5 秒）：');
   const ping = await sandbox.window.SGUProbe.simplePingStatus();
