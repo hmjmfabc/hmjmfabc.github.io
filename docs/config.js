@@ -15,11 +15,11 @@ window.SGU_CONFIG = {
     {
       "id": "server",
       "index": "②",
-      "name": "SGU物理机后端",
+      "name": "Imikufans后端",
       "enabled": false,
-      "disabledReason": "备案中，暂不可用",
+      "disabledReason": "备案中，线上暂不可用",
       "publicUrl": "ipv6.swordsman.top:8787",
-      "hint": "在 SGU 自有物理机上运行的 Node 服务，数据最完整（含网络延迟测量），探测全部在自有机器上完成。出于合规性考虑（对外提供 Web 服务需完成 ICP 备案），该方式暂时关闭；预计 2027 年 1 月左右完成备案后开放，届时地址为 ipv6.swordsman.top:8787。在此之前请使用选项①或③。"
+      "hint": "在自有物理机上运行的 Node 服务，数据最完整（含网络延迟测量），探测全部在自有机器上完成。按合规要求（对外提供 Web 服务需完成 ICP 备案），该方式目前仅在本机可用，线上版本暂不开放；预计 2027 年 1 月左右完成备案后于 ipv6.swordsman.top:8787 对外开放。感谢 shen 的大力支持！"
     },
     {
       "id": "client",

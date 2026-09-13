@@ -86,10 +86,10 @@
       'backend.remote.name': '远端 API',
       'backend.remote.hint':
         '由第三方公共接口代为探测，浏览器直接访问，不需要任何自有服务器。IPv4 / IPv6 都能检测，但拿不到网络延迟，且依赖第三方服务的可用性。展开后可选择具体接口。',
-      'backend.server.name': 'SGU物理机后端',
+      'backend.server.name': 'Imikufans后端',
       'backend.server.hint':
-        '在 SGU 自有物理机上运行的 Node 服务，数据最完整（含网络延迟测量），探测全部在自有机器上完成。出于合规性考虑（对外提供 Web 服务需完成 ICP 备案），该方式暂时关闭；预计 2027 年 1 月左右完成备案后开放，届时地址为 ipv6.swordsman.top:8787。在此之前请使用选项①或③。',
-      'backend.server.disabled': '备案中，暂不可用',
+        '在自有物理机上运行的 Node 服务，数据最完整（含网络延迟测量），探测全部在自有机器上完成。按合规要求（对外提供 Web 服务需完成 ICP 备案），该方式目前仅在本机可用，线上版本暂不开放；预计 2027 年 1 月左右完成备案后于 ipv6.swordsman.top:8787 对外开放。感谢 shen 的大力支持！',
+      'backend.server.disabled': '备案中，线上暂不可用',
       'backend.client.name': '客户端访问（简单 ping）',
       'backend.client.hint':
         '在浏览器里做一次简单试探：解析域名后向目标端口发起 WebSocket 连接，看端口有没有响应。浏览器无法执行标准 mcping（不能建立原始 TCP 连接），因此只能判断「端口是否有人应答」，拿不到版本、人数、MOTD。',
@@ -182,10 +182,10 @@
       'backend.remote.name': '遠端 API',
       'backend.remote.hint':
         '由第三方公共介面代為探測，瀏覽器直接存取，不需要任何自有伺服器。IPv4 / IPv6 都能檢測，但拿不到網路延遲，且依賴第三方服務的可用性。展開後可選擇具體介面。',
-      'backend.server.name': 'SGU 實體機後端',
+      'backend.server.name': 'Imikufans 後端',
       'backend.server.hint':
-        '在 SGU 自有實體機上運作的 Node 服務，資料最完整（含網路延遲測量），探測全部在自有機器上完成。基於合規性考量（對外提供 Web 服務需完成 ICP 備案），該方式暫時關閉；預計 2027 年 1 月左右完成備案後開放，屆時位址為 ipv6.swordsman.top:8787。在此之前請使用選項①或③。',
-      'backend.server.disabled': '備案中，暫不可用',
+        '在自有實體機上運作的 Node 服務，資料最完整（含網路延遲測量），探測全部在自有機器上完成。依合規要求（對外提供 Web 服務需完成 ICP 備案），該方式目前僅在本機可用，線上版本暫不開放；預計 2027 年 1 月左右完成備案後於 ipv6.swordsman.top:8787 對外開放。感謝 shen 的大力支持！',
+      'backend.server.disabled': '備案中，線上暫不可用',
       'backend.client.name': '客戶端存取（簡單 ping）',
       'backend.client.hint':
         '在瀏覽器裡做一次簡單試探：解析網域後向目標連接埠發起 WebSocket 連線，看連接埠有沒有回應。瀏覽器無法執行標準 mcping（不能建立原始 TCP 連線），因此只能判斷「連接埠是否有人應答」，拿不到版本、人數、MOTD。',
@@ -278,9 +278,9 @@
       'backend.remote.name': 'Remote API',
       'backend.remote.hint':
         'Probing is delegated to public third-party APIs called directly from your browser — no server of ours required. Both IPv4 and IPv6 are checked, but no network latency is available and availability depends on those third parties. Expand to pick a specific API.',
-      'backend.server.name': 'SGU physical-machine backend',
+      'backend.server.name': 'Imikufans backend',
       'backend.server.hint':
-        'A Node service running on SGU’s own physical machine — the most complete data, including latency, with all probing done on our own hardware. For compliance reasons (ICP filing is required to serve web content publicly) this option is temporarily disabled; it is expected to open around January 2027 at ipv6.swordsman.top:8787. Please use option ① or ③ until then.',
+        'A Node service running on our own physical machine — the most complete data, including latency, with all probing done on our own hardware. For compliance reasons (ICP filing is required to serve web content publicly) it is available only on this local machine for now and is not exposed publicly; it is expected to open around January 2027 at ipv6.swordsman.top:8787. Special thanks to shen for the generous support!',
       'backend.server.disabled': 'ICP filing in progress',
       'backend.client.name': 'Client-side (simple ping)',
       'backend.client.hint':
@@ -376,10 +376,10 @@
       'backend.remote.name': '遠端 API',
       'backend.remote.hint':
         '假第三方之公器以代探，瀏覽器直往，不須自有之伺服。IPv4 與 IPv6 皆可察，然不得往還之數，且繫於第三方之存亡。展之可擇其器。',
-      'backend.server.name': 'SGU 實機後端',
+      'backend.server.name': 'Imikufans 後端',
       'backend.server.hint':
-        '行於 SGU 自有實機之 Node 務，其數最備（含往還之測），探事皆在本機。然循合規之制（對外供 Web 之務須成 ICP 備案），此法暫閉；計 2027 年正月前後備案既成而後開，其時址為 ipv6.swordsman.top:8787。未開之前，請用①或③。',
-      'backend.server.disabled': '備案中，暫不可用',
+        '行於自有實機之 Node 務，其數最備（含往還之測），探事皆在本機。然循合規之制（對外供 Web 之務須成 ICP 備案），此法今惟本機可用，線上未之開也；計 2027 年正月前後備案既成，乃於 ipv6.swordsman.top:8787 對外而開。感 shen 之鼎力相助！',
+      'backend.server.disabled': '備案中，線上未可用',
       'backend.client.name': '客戶端訪問（略探）',
       'backend.client.hint':
         '於瀏覽器中略試：先解域名，乃以 WebSocket 叩其埠，觀其有應否。瀏覽器不能行標準 mcping（不得闢原始 TCP 之連），故惟知「埠有應否」，不得版次、人數、MOTD。',
@@ -472,10 +472,10 @@
       'backend.remote.name': 'リモート API',
       'backend.remote.hint':
         '第三者の公開 API が代理で計測し、ブラウザから直接アクセスします。自前のサーバーは不要です。IPv4 / IPv6 の両方を確認できますが、遅延は取得できず、第三者サービスの可用性に依存します。展開すると個別の API を選べます。',
-      'backend.server.name': 'SGU 物理マシン backend',
+      'backend.server.name': 'Imikufans バックエンド',
       'backend.server.hint':
-        'SGU 自前の物理マシンで動作する Node サービスで、データが最も完全（遅延測定を含む）です。コンプライアンス上の理由（Web サービス公開には ICP 備案が必要）により現在は停止中で、2027 年 1 月頃に備案完了後に ipv6.swordsman.top:8787 で公開予定です。それまでは①または③をご利用ください。',
-      'backend.server.disabled': '備案中・利用不可',
+        '自前の物理マシンで動作する Node サービスで、データが最も完全（遅延測定を含む）です。コンプライアンス上の理由（Web サービス公開には ICP 備案が必要）により、現在は本機でのみ利用可能で、オンライン版では公開していません。2027 年 1 月頃に備案完了後、ipv6.swordsman.top:8787 で公開予定です。shen さんの多大なるご支援に感謝します！',
+      'backend.server.disabled': '備案中・オンライン未公開',
       'backend.client.name': 'クライアント側（簡易 ping）',
       'backend.client.hint':
         'ブラウザ内で簡易的に試行します：ドメインを解決後、対象ポートへ WebSocket 接続を試みて応答の有無を調べます。ブラウザは生の TCP 接続を確立できないため、ポートが応答するかどうかだけが分かり、バージョン・人数・MOTD は取得できません。',

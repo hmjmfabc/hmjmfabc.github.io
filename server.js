@@ -97,6 +97,37 @@ function sendJson(res, status, payload) {
   res.end(body);
 }
 
+/**
+ * 本地页面专用的 config.js：
+ * 线上受合规限制保持停用，但本机页面直接启用「Imikufans后端」（本机 Node 服务就是它），
+ * 并把它设为默认项；连不上时会自动回退到远端 API。
+ */
+function renderLocalConfig() {
+  const raw = fs.readFileSync(path.join(PUBLIC_DIR, 'config.js'), 'utf8');
+  try {
+    const body = raw.slice(raw.indexOf('{')).replace(/;\s*$/, '');
+    const cfg = JSON.parse(body);
+    cfg.defaultBackend = 'server';
+    cfg.localBackendEnabled = true;
+    if (Array.isArray(cfg.backends)) {
+      const srv = cfg.backends.find((b) => b.id === 'server');
+      if (srv) {
+        srv.enabled = true;
+        delete srv.disabledReason;
+        srv.localEnabled = true;
+      }
+    }
+    return `/* 本地服务器注入：已启用「${(cfg.backends.find((b) => b.id === 'server') || {}).name || '本地后端'}」（仅本机页面生效） */\nwindow.SGU_CONFIG = ${JSON.stringify(
+      cfg,
+      null,
+      2
+    )};\n`;
+  } catch (err) {
+    console.error('[server] 生成本地 config 失败，回退为原文件：', err.message);
+    return raw;
+  }
+}
+
 function serveStatic(req, res, urlPath) {
   const rel = decodeURIComponent(urlPath).replace(/^\/+/, '');
   const target = path.join(PUBLIC_DIR, rel || 'index.html');
@@ -214,6 +245,17 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (pathname === '/config.js') {
+      const body = Buffer.from(renderLocalConfig(), 'utf8');
+      res.writeHead(200, {
+        'Content-Type': MIME['.js'],
+        'Content-Length': body.length,
+        'Cache-Control': 'no-cache',
+      });
+      res.end(body);
+      return;
+    }
+
     if (pathname === '/api/version') {
       sendJson(res, 200, { ok: true, assetVersion: assetVersion(), startedAt: new Date(Date.now() - process.uptime() * 1000).toISOString() });
       return;
@@ -231,6 +273,7 @@ server.listen(PORT, HOST, () => {
   console.log(`${config.site.title}`);
   console.log(`服务已启动：http://${HOST}:${PORT}/`);
   console.log(`自动刷新间隔：${config.refreshIntervalMs / 60000} 分钟`);
+  console.log('本地已启用「Imikufans后端」为默认数据来源（线上版本仍为备案中不可用）');
   monitor.startScheduler();
   monitor.getStatus({ force: true, reason: 'startup' }).then((s) => {
     console.log(

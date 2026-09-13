@@ -257,15 +257,17 @@ function warn(ok, label) {
     const items = els['backend-options'].querySelectorAll('.backend-item[data-value]');
     check(items.length === 3, `下拉含 ①②③ 三项（实际 ${items.length}）`);
     const srv = items.find((i) => i.attrs['data-value'] === 'server');
-    check(!!srv && srv.hasAttribute('disabled'), '②SGU物理机后端置灰不可选');
+    check(!!srv && srv.hasAttribute('disabled'), '线上版本中 ②Imikufans后端置灰不可选（备案中）');
   }
   check(/使用中/.test(backendHtml), '卡片标注了当前实际生效的数据来源（使用中标签）');
   check(/远端 API/.test(els['backend-active'].textContent), `本地后端不可用时自动切换到远端 API（当前：${els['backend-active'].textContent}）`);
   check(/远端 API/.test(els['source-note'].innerHTML), '顶部说明同步为远端 API');
   check(
-    /备案中，暂不可用/.test(backendHtml) && /2027 年 1 月/.test(backendHtml),
-    '②SGU物理机后端标注备案中且不可点击'
+    /备案中，线上暂不可用/.test(backendHtml) && /2027 年 1 月/.test(backendHtml),
+    '②标注「备案中，线上暂不可用」并注明备案时间'
   );
+  check(/Imikufans后端/.test(backendHtml), '②名称已改为 Imikufans后端');
+  check(/感谢 shen 的大力支持！/.test(backendHtml), '②说明中含「感谢 shen 的大力支持！」');
   check(/id="provider-toggle"/.test(backendHtml), '① 的探测接口下拉已渲染');
   check(/结果可能不准确/.test(backendHtml), '③标注结果可能不准确');
 

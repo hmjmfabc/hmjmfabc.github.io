@@ -265,7 +265,10 @@ function expectServerStatus(endpoints) {
   // 真实页面会先加载 config.js / motd.js / probe.js，这里保持一致（probe.js 因涉及网络请求不加载）
   // 固定语言，保证断言稳定（Node 的 navigator.language 是 en-US）
   global.localStorage.setItem('sgu-lang', 'zh-CN');
-  eval(fs.readFileSync(path.join(__dirname, '..', 'public', 'config.js'), 'utf8'));
+  // 从本地服务器取配置：本地服务器会把「Imikufans后端」注入为启用+默认，
+  // 因此这里模拟的正是本机页面的真实行为
+  const localConfigCode = await fetchText(`${BASE}/config.js`);
+  eval(localConfigCode);
   eval(fs.readFileSync(path.join(__dirname, '..', 'public', 'i18n.js'), 'utf8'));
   const CONFIG_SITE = global.SGU_CONFIG && global.SGU_CONFIG.site;
   const I18N = global.SGUI18n;
@@ -363,8 +366,8 @@ function expectServerStatus(endpoints) {
   const labels = items.map((i) => i.attrs['data-value']).join(',');
   check(labels === 'remote,server,client', `选项顺序为 ①②③（${labels}）`);
   check(
-    /远端 API/.test(backendHtml) && /SGU物理机后端/.test(backendHtml) && /客户端访问/.test(backendHtml),
-    '三个选项名称正确'
+    /远端 API/.test(backendHtml) && /Imikufans后端/.test(backendHtml) && /客户端访问/.test(backendHtml),
+    '三个选项名称正确（②已改名 Imikufans后端）'
   );
   check((backendHtml.match(/class="backend-item-hint"/g) || []).length >= 3, '每个选项都带提示文字');
 
@@ -375,58 +378,83 @@ function expectServerStatus(endpoints) {
     '触发器 aria-expanded=false'
   );
   const toggleLabel = backendHtml.slice(backendHtml.indexOf('backend-select-value'), backendHtml.indexOf('backend-select-value') + 320);
-  check(/远端 API/.test(toggleLabel), '触发器显示当前选项（① 远端 API）');
+  check(/Imikufans后端/.test(toggleLabel), '触发器显示当前选项（② Imikufans后端）');
   check(/默认/.test(toggleLabel), '触发器标注「默认」');
+  check(!/备案中/.test(toggleLabel), '本地不再显示「备案中」标签');
 
-  // ② 停用
+  // ② 本地已启用
   const serverItem = items.find((i) => i.attrs['data-value'] === 'server');
-  check(serverItem && serverItem.hasAttribute('disabled'), '②SGU物理机后端在下拉中不可选（置灰）');
-  check(/备案中，暂不可用/.test(backendHtml), '②标注「备案中，暂不可用」');
+  check(serverItem && !serverItem.hasAttribute('disabled'), '②Imikufans后端在本地已启用、可选');
+  check(/感谢 shen 的大力支持！/.test(backendHtml), '②说明中含「感谢 shen 的大力支持！」');
   check(/2027 年 1 月/.test(backendHtml) && /ipv6\.swordsman\.top:8787/.test(backendHtml), '②注明备案时间与将来的服务地址');
+  check(!/tag-off[\s\S]{0,40}备案中/.test(backendHtml), '本地不显示「备案中」标签');
 
   // ③ 警示
   check(/结果可能不准确/.test(backendHtml), '③特别标注「结果可能不准确」');
   check(/原始 TCP 连接/.test(backendHtml) && /标准 mcping/.test(backendHtml), '③给出浏览器限制的说明');
 
-  // 点击触发器 → 展开
+  // 展开菜单 → 选择 ①（远端 API）
   {
     const toggle = els['backend-options'].querySelector('#backend-toggle');
     toggle.click();
-    const opened = els['backend-options'].innerHTML;
-    check(!/id="backend-menu"[^>]*\shidden/.test(opened), '点击触发器后菜单展开');
+    check(!/id="backend-menu"[^>]*\shidden/.test(els['backend-options'].innerHTML), '点击触发器后菜单展开');
     check(
       els['backend-options'].querySelector('#backend-toggle').attrs['aria-expanded'] === 'true',
       '展开后 aria-expanded=true'
     );
-    // 点击②（disabled）不应切换
-    const before = JSON.parse(global.localStorage.getItem('sgu-backend') || '{"source":"remote"}').source;
-    const disabledItem = els['backend-options'].querySelectorAll('.backend-item[data-value]').find((i) => i.attrs['data-value'] === 'server');
-    disabledItem.click();
-    const after = JSON.parse(global.localStorage.getItem('sgu-backend') || '{"source":"remote"}').source;
-    check(before === after && after !== 'server', '点击置灰的②不会切换数据来源');
-    // 再点触发器 → 收起
+
+    // 选择 ① 远端 API
+    els['backend-options']
+      .querySelectorAll('.backend-item[data-value]')
+      .find((i) => i.attrs['data-value'] === 'remote')
+      .click();
+    const saved = JSON.parse(global.localStorage.getItem('sgu-backend') || '{}');
+    check(saved.source === 'remote', `选择①后写入 localStorage（${JSON.stringify(saved)}）`);
+    check(/id="backend-menu"[^>]*\shidden/.test(els['backend-options'].innerHTML), '选择后菜单自动收起');
+
+    // 再展开一次，验证可以收起
+    els['backend-options'].querySelector('#backend-toggle').click();
+    check(!/id="backend-menu"[^>]*\shidden/.test(els['backend-options'].innerHTML), '可再次展开');
     els['backend-options'].querySelector('#backend-toggle').click();
     check(/id="backend-menu"[^>]*\shidden/.test(els['backend-options'].innerHTML), '再次点击收起菜单');
   }
 
   // ① 的接口下拉：仅在选中①时出现
-  check(/id="provider-toggle"/.test(backendHtml), '选中①时显示探测接口下拉');
-  check(/id="provider-menu"[^>]*\shidden/.test(backendHtml), '接口下拉默认收起');
   {
+    const remoteHtml = els['backend-options'].innerHTML;
+    check(/id="provider-toggle"/.test(remoteHtml), '选中①时显示探测接口下拉');
+    check(/id="provider-menu"[^>]*\shidden/.test(remoteHtml), '接口下拉默认收起');
     const pToggle = els['backend-options'].querySelector('#provider-toggle');
     pToggle.click();
     check(!/id="provider-menu"[^>]*\shidden/.test(els['backend-options'].innerHTML), '点击后接口下拉展开');
     const pItems = els['backend-options'].querySelectorAll('.backend-item[data-provider]');
     check(pItems.length === 2, `接口下拉含 2 个接口（实际 ${pItems.length}）`);
-    check(/mcsrvstat\.us/.test(els['backend-options'].innerHTML) && /mcstatus\.io/.test(els['backend-options'].innerHTML), '列出全部可用接口');
-    const second = pItems.find((i) => i.attrs['data-provider'] === 'mcstatus.io');
-    second.click();
-    const saved = JSON.parse(global.localStorage.getItem('sgu-backend') || '{}');
-    check(saved.provider === 'mcstatus.io', `选择接口后写入 localStorage（${JSON.stringify(saved)}）`);
-    check(els['backend-options'].querySelector('#provider-menu') === null || /id="provider-menu"[^>]*\shidden/.test(els['backend-options'].innerHTML), '选择后接口下拉自动收起');
+    check(
+      /mcsrvstat\.us/.test(els['backend-options'].innerHTML) && /mcstatus\.io/.test(els['backend-options'].innerHTML),
+      '列出全部可用接口'
+    );
+    pItems.find((i) => i.attrs['data-provider'] === 'mcstatus.io').click();
+    const saved2 = JSON.parse(global.localStorage.getItem('sgu-backend') || '{}');
+    check(saved2.provider === 'mcstatus.io', `选择接口后写入 localStorage（${JSON.stringify(saved2)}）`);
+    check(
+      /id="provider-menu"[^>]*\shidden/.test(els['backend-options'].innerHTML),
+      '选择后接口下拉自动收起'
+    );
   }
-  check(/SGU物理机后端|远端 API/.test(els['backend-active'].textContent), `卡片显示当前生效来源（${els['backend-active'].textContent}）`);
-  check(/远端 API|第三方|SGU物理机后端/.test(els['source-note'].innerHTML), '顶部说明当前数据来源');
+
+  // 切回本地后端，确认「当前生效」与来源说明
+  {
+    els['backend-options'].querySelector('#backend-toggle').click();
+    els['backend-options']
+      .querySelectorAll('.backend-item[data-value]')
+      .find((i) => i.attrs['data-value'] === 'server')
+      .click();
+    check(
+      /Imikufans后端|远端 API/.test(els['backend-active'].textContent),
+      `卡片显示当前生效来源（${els['backend-active'].textContent}）`
+    );
+  }
+  check(/远端 API|第三方|Imikufans后端/.test(els['source-note'].innerHTML), '顶部说明当前数据来源');
 
   console.log('\n[7/9] 校验多语言切换');
   // 语言按钮与菜单
