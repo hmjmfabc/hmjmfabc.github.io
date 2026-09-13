@@ -169,12 +169,14 @@
 
   /* ---------------- 第三方状态接口 ---------------- */
 
-  /** 依次尝试各提供方，返回统一结构 */
-  async function queryProvider(address, resolved) {
+  /** 依次尝试各提供方，返回统一结构；onlyProvider 可指定只用某一个接口 */
+  async function queryProvider(address, resolved, onlyProvider) {
     const { probe } = config();
+    const list = (probe.providers || []).filter((p) => !onlyProvider || p.name === onlyProvider);
+    const providers = list.length ? list : probe.providers || [];
     let lastError = null;
-    for (const provider of probe.providers) {
-      const url = provider.url.replace('{address}', encodeURIComponent(address).replace(/%3A/gi, ':').replace(/%5B/gi, '[').replace(/%5D/gi, ']'));
+    for (const provider of providers) {
+      const url = publicProviderUrl(provider, address);
       try {
         const data = await getJson(url, probe.requestTimeoutMs);
         return normalize(provider.name, data, resolved);
@@ -185,12 +187,33 @@
     throw new Error(lastError || '所有探测接口均不可用');
   }
 
+  /** 拼接接口地址：{address} 占位符替换，并保留 : 与 [ ] */
+  function publicProviderUrl(provider, address) {
+    return provider.url
+      .replace('{address}', encodeURIComponent(address).replace(/%3A/gi, ':').replace(/%5B/gi, '[').replace(/%5D/gi, ']'));
+  }
+
+  /** 可用的远端接口列表（供“后端选择”界面展示） */
+  function listProviders() {
+    return (config().probe.providers || []).map((p) => ({
+      name: p.name,
+      url: p.url,
+      note: p.note || PROVIDER_NOTES[p.name] || '',
+    }));
+  }
+
+  const PROVIDER_NOTES = {
+    'mcsrvstat.us': '国外公共接口，IPv4 / IPv6 均支持，返回版本、人数、彩色 MOTD 与服务器图标',
+    'mcstatus.io': '国外公共接口，作为备用；对部分 IPv6 目标支持有限',
+  };
+
   /** 把不同接口的返回统一成内部结构 */
   function normalize(provider, data, resolved) {
     if (provider === 'mcstatus.io') {
       const players = data.players || {};
       const online = !!data.online;
       return {
+        provider,
         online,
         version: (data.version && (data.version.name_clean || data.version.name_raw)) || null,
         players: {
@@ -223,6 +246,7 @@
       }
     }
     return {
+      provider,
       online,
       version: data.version || null,
       players: {
@@ -308,6 +332,7 @@
 
   async function fetchStatus(options = {}) {
     const conf = config();
+    const onlyProvider = options.provider || null;
     const startedAt = Date.now();
     const flat = conf.servers.flatMap((s) => s.endpoints);
     const queue = createQueue((conf.probe && conf.probe.minIntervalMs) || 1100);
@@ -336,7 +361,7 @@
             });
           }
           try {
-            const result = await queryProvider(resolved.address, resolved);
+            const result = await queryProvider(resolved.address, resolved, onlyProvider);
             const motd = result.motdRaw && motdLib() ? motdLib().parseMotd(result.motdRaw) : null;
             return Object.assign(base, {
               online: !!result.online,
@@ -350,7 +375,7 @@
               error: result.error || null,
               message: result.message || null,
               note: null, // 按要求不展示任何地址信息
-              source: conf.probe.providers[0] && conf.probe.providers[0].name,
+              provider: result.provider || onlyProvider || (conf.probe.providers[0] && conf.probe.providers[0].name),
             });
           } catch (err) {
             return Object.assign(base, {
@@ -393,8 +418,8 @@
 
     return {
       ok: true,
-      source: 'static',
-      sourceName: (conf.probe.providers[0] && conf.probe.providers[0].name) || '第三方接口',
+      source: 'remote',
+      sourceName: onlyProvider || (conf.probe.providers[0] && conf.probe.providers[0].name) || '远端接口',
       site: conf.site,
       overall,
       overallText: (STATUS_TEXT[overall] || STATUS_TEXT.unknown).overall,
@@ -423,5 +448,5 @@
     };
   }
 
-  window.SGUProbe = { fetchStatus, resolveEndpoint, dohQuery, readHistory };
+  window.SGUProbe = { fetchStatus, resolveEndpoint, dohQuery, readHistory, listProviders, publicProviderUrl };
 })();

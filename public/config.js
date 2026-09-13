@@ -2,6 +2,8 @@
 window.SGU_CONFIG = {
   "mode": "auto",
   "apiBase": "",
+  "localApiBase": "http://127.0.0.1:8787",
+  "defaultBackend": "server",
   "site": {
     "title": "SGU 剑客群组服 状态监测",
     "description": "SGU 剑客群组服 各服务状态监测",
@@ -19,11 +21,13 @@ window.SGU_CONFIG = {
     "providers": [
       {
         "name": "mcsrvstat.us",
-        "url": "https://api.mcsrvstat.us/3/{address}"
+        "url": "https://api.mcsrvstat.us/3/{address}",
+        "note": "国外公共接口，IPv4 / IPv6 均支持，返回版本、人数、彩色 MOTD 与服务器图标"
       },
       {
         "name": "mcstatus.io",
-        "url": "https://api.mcstatus.io/v2/status/java/{address}"
+        "url": "https://api.mcstatus.io/v2/status/java/{address}",
+        "note": "国外公共接口，作为备用；对部分 IPv6 目标支持有限"
       }
     ],
     "requestTimeoutMs": 9000,

@@ -43,26 +43,60 @@ function fetchHeaders(url) {
   });
 }
 
+function parseInputs(html) {
+  const out = [];
+  const re = /<input\b([^>]*)>/g;
+  let m;
+  while ((m = re.exec(html))) {
+    const attrs = {};
+    const attrRe = /([a-zA-Z-]+)(?:="([^"]*)")?/g;
+    let a;
+    while ((a = attrRe.exec(m[1]))) attrs[a[1]] = a[2] === undefined ? true : a[2];
+    out.push({
+      name: attrs.name,
+      value: attrs.value,
+      checked: attrs.checked !== undefined,
+      disabled: attrs.disabled !== undefined,
+      handlers: {},
+      addEventListener(type, fn) { this.handlers[type] = fn; },
+      dispatchChange() { if (this.handlers.change) this.handlers.change({ target: this }); },
+    });
+  }
+  return out;
+}
+
 function makeEl(id) {
-  return {
+  const el = {
     id,
     dataset: {},
     style: {},
     attrs: {},
     textContent: '',
-    innerHTML: '',
+    _html: '',
+    _inputs: [],
     handlers: {},
     classList: {
       _s: new Set(),
       add(c) { this._s.add(c); },
       remove(c) { this._s.delete(c); },
       contains(c) { return this._s.has(c); },
+      toggle(c, on) { if (on) this._s.add(c); else this._s.delete(c); },
     },
     addEventListener(type, fn) { this.handlers[type] = fn; },
     setAttribute(name, value) { this.attrs[name] = value; },
     getAttribute(name) { return Object.prototype.hasOwnProperty.call(this.attrs, name) ? this.attrs[name] : null; },
     click() { if (this.handlers.click) this.handlers.click({ preventDefault() {} }); },
+    querySelectorAll(sel) {
+      const m = /input\[name="([^"]+)"\]/.exec(sel);
+      if (m) return (el._inputs || []).filter((i) => i.name === m[1]);
+      return [];
+    },
   };
+  Object.defineProperty(el, 'innerHTML', {
+    get() { return el._html; },
+    set(v) { el._html = String(v); el._inputs = parseInputs(el._html); },
+  });
+  return el;
 }
 
 function makeStorage() {
@@ -152,8 +186,14 @@ function expectServerStatus(endpoints) {
     addEventListener() {},
   };
   global.localStorage = makeStorage();
+  global.window = global;
+  if (typeof global.AbortController === 'undefined') {
+    global.AbortController = class { constructor() { this.signal = {}; } abort() {} };
+  }
   global.fetch = async () => ({ ok: true, status: 200, json: async () => data });
 
+  // 真实页面会先加载 config.js / motd.js / probe.js，这里保持一致（probe.js 因涉及网络请求不加载）
+  eval(fs.readFileSync(path.join(__dirname, '..', 'public', 'config.js'), 'utf8'));
   const code = fs.readFileSync(path.join(__dirname, '..', 'public', 'app.js'), 'utf8');
   eval(code);
   await new Promise((r) => setTimeout(r, 500));
@@ -219,7 +259,48 @@ function expectServerStatus(endpoints) {
   check(/footer \.footer-copyright\s*\{[^}]*font-size:\s*1[5-9]px/.test(css), '版权行字号大于其它页脚文字');
   check(/id="last-updated"/.test(page) && /id="countdown-text"/.test(page), '页脚保留最后更新时间与刷新倒计时两行');
 
-  console.log('\n[5/6] 校验静态资源缓存策略（防止浏览器继续使用旧页面）');
+  console.log('\n[5/7] 校验页面底部的“后端选择”卡片');
+  const backendHtml = els['backend-options'].innerHTML;
+  check(/id="backend-card"/.test(page), '页面存在“后端选择”卡片');
+  check((page.match(/后端选择/g) || []).length >= 1, '卡片标题为「后端选择」');
+  check(els['backend-card'] !== undefined && backendHtml.length > 0, '卡片内容已渲染');
+  check(/①[\s\S]*?远端 API/.test(backendHtml), '包含选项① 远端 API');
+  check(/②[\s\S]*?本地后端/.test(backendHtml), '包含选项② 本地后端');
+  check(/③[\s\S]*?客户端访问/.test(backendHtml), '包含选项③ 客户端访问');
+  check((backendHtml.match(/class="backend-hint"/g) || []).length >= 3, '每个选项都带提示文字');
+  check(/mcsrvstat\.us/.test(backendHtml) && /mcstatus\.io/.test(backendHtml), '选项①下列出了所有可用 API 子选项');
+  check(/name="backend-provider"/.test(backendHtml), 'API 子选项使用单选按钮');
+  check(/tag-off[\s\S]*?不可用/.test(backendHtml), '选项③标记为不可用并说明原因');
+  check(/原始 TCP 连接/.test(backendHtml), '选项③给出浏览器限制的说明');
+  {
+    const inputs = els['backend-options'].querySelectorAll('input[name="backend-source"]');
+    check(inputs.length === 3, `三个后端选项共 3 个单选项（实际 ${inputs.length}）`);
+    const checked = inputs.filter((i) => i.checked);
+    check(checked.length === 1 && checked[0].value === 'server', `默认选中②本地后端（实际 ${checked.map((c) => c.value).join(',') || '无'}）`);
+    check(inputs.find((i) => i.value === 'client').disabled === true, '③客户端访问在界面上不可选');
+    const providerInputs = els['backend-options'].querySelectorAll('input[name="backend-provider"]');
+    check(providerInputs.length === 2, `选项①下有 2 个 API 子选项（实际 ${providerInputs.length}）`);
+  }
+  check(/本地后端/.test(els['backend-active'].textContent), `卡片显示当前生效来源（${els['backend-active'].textContent}）`);
+  check(/本机后端实时探测/.test(els['source-note'].innerHTML), '顶部说明当前由本地后端提供数据');
+
+  // 模拟切换到「远端 API」并选择子接口
+  {
+    const inputs = els['backend-options'].querySelectorAll('input[name="backend-source"]');
+    const remote = inputs.find((i) => i.value === 'remote');
+    remote.checked = true;
+    remote.dispatchChange();
+    const saved = JSON.parse(global.localStorage.getItem('sgu-backend') || '{}');
+    check(saved.source === 'remote', `切换后写入 localStorage（${JSON.stringify(saved)}）`);
+    const providerInputs = els['backend-options'].querySelectorAll('input[name="backend-provider"]');
+    const first = providerInputs[0];
+    first.checked = true;
+    first.dispatchChange();
+    const saved2 = JSON.parse(global.localStorage.getItem('sgu-backend') || '{}');
+    check(saved2.provider === first.value, `选择子接口后写入 localStorage（${saved2.provider}）`);
+  }
+
+  console.log('\n[6/7] 校验静态资源缓存策略（防止浏览器继续使用旧页面）');
   check(/\/style\.css\?v=[0-9a-z]+/.test(page), 'CSS 引用带版本号');
   check(/\/app\.js\?v=[0-9a-z]+/.test(page), 'JS 引用带版本号');
   check(!/href="\/style\.css"/.test(page) && !/src="\/app\.js"/.test(page), '不存在无版本号的资源引用');
@@ -233,7 +314,7 @@ function expectServerStatus(endpoints) {
   check(version.ok === true && typeof version.assetVersion === 'string', `资源版本接口可用（${version.assetVersion}）`);
   check(page.includes(version.assetVersion), '页面资源版本与接口一致');
 
-  console.log('\n[6/6] 校验深色模式与右上角切换按钮');
+  console.log('\n[7/7] 校验深色模式与右上角切换按钮');
   check(/<button id="theme-toggle"/.test(page), '页面存在主题切换按钮');
   check(/class="icon-sun"/.test(page) && /class="icon-moon"/.test(page), '按钮含太阳 / 月亮两个图标');
   const toggleRule = /\.theme-toggle\s*\{([^}]*)\}/.exec(css);

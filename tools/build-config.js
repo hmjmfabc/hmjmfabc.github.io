@@ -17,6 +17,8 @@ const OUT = path.join(__dirname, '..', 'public', 'config.js');
 const payload = {
   mode: 'auto', // auto：优先同源 /api/status，失败则用浏览器直连探测；也可写死 server / static
   apiBase: '', // 后端地址，例如 https://api.status.swordsman.top；留空表示同源
+  localApiBase: 'http://127.0.0.1:8787', // 「本地后端」选项使用的地址
+  defaultBackend: 'server', // 底部“后端选择”的默认项：server（本地后端）/ remote（远端 API）
   site: config.site,
   refreshIntervalMs: config.refreshIntervalMs,
   historyLimit: 24,
@@ -30,8 +32,16 @@ const payload = {
     ],
     // 状态探测接口，按顺序尝试；{address} 会被替换为 域名 / IP:端口
     providers: [
-      { name: 'mcsrvstat.us', url: 'https://api.mcsrvstat.us/3/{address}' },
-      { name: 'mcstatus.io', url: 'https://api.mcstatus.io/v2/status/java/{address}' },
+      {
+        name: 'mcsrvstat.us',
+        url: 'https://api.mcsrvstat.us/3/{address}',
+        note: '国外公共接口，IPv4 / IPv6 均支持，返回版本、人数、彩色 MOTD 与服务器图标',
+      },
+      {
+        name: 'mcstatus.io',
+        url: 'https://api.mcstatus.io/v2/status/java/{address}',
+        note: '国外公共接口，作为备用；对部分 IPv6 目标支持有限',
+      },
     ],
     requestTimeoutMs: 9000,
     minIntervalMs: 1100, // 第三方接口限速（约 1 次/秒）

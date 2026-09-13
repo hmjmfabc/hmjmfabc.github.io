@@ -17,26 +17,60 @@ const PUB = path.join(__dirname, '..', 'public');
 
 /* ---------------- 极简 DOM / 浏览器桩 ---------------- */
 
+function parseInputs(html) {
+  const out = [];
+  const re = /<input\b([^>]*)>/g;
+  let m;
+  while ((m = re.exec(html))) {
+    const attrs = {};
+    const attrRe = /([a-zA-Z-]+)(?:="([^"]*)")?/g;
+    let a;
+    while ((a = attrRe.exec(m[1]))) attrs[a[1]] = a[2] === undefined ? true : a[2];
+    out.push({
+      name: attrs.name,
+      value: attrs.value,
+      checked: attrs.checked !== undefined,
+      disabled: attrs.disabled !== undefined,
+      handlers: {},
+      addEventListener(type, fn) { this.handlers[type] = fn; },
+      dispatchChange() { if (this.handlers.change) this.handlers.change({ target: this }); },
+    });
+  }
+  return out;
+}
+
 function makeEl(id) {
-  return {
+  const el = {
     id,
     dataset: {},
     style: {},
     attrs: {},
     textContent: '',
-    innerHTML: '',
+    _html: '',
+    _inputs: [],
     handlers: {},
     classList: {
       _s: new Set(),
       add(c) { this._s.add(c); },
       remove(c) { this._s.delete(c); },
       contains(c) { return this._s.has(c); },
+      toggle(c, on) { if (on) this._s.add(c); else this._s.delete(c); },
     },
     addEventListener(type, fn) { this.handlers[type] = fn; },
     setAttribute(k, v) { this.attrs[k] = v; },
     getAttribute(k) { return Object.prototype.hasOwnProperty.call(this.attrs, k) ? this.attrs[k] : null; },
     click() { if (this.handlers.click) this.handlers.click({ preventDefault() {} }); },
+    querySelectorAll(sel) {
+      const m = /input\[name="([^"]+)"\]/.exec(sel);
+      if (m) return (el._inputs || []).filter((i) => i.name === m[1]);
+      return [];
+    },
   };
+  Object.defineProperty(el, 'innerHTML', {
+    get() { return el._html; },
+    set(v) { el._html = String(v); el._inputs = parseInputs(el._html); },
+  });
+  return el;
 }
 
 const els = {};
@@ -139,6 +173,14 @@ function warn(ok, label) {
   check(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(els['last-updated'].textContent.replace('最后更新于 ', '')), '页脚显示最后更新时间');
   check(/^将于 \d{2}:\d{2} 后刷新$/.test(els['countdown-text'].textContent), '页脚显示刷新倒计时');
   warn(els.overall.dataset.status !== 'unknown', '总体状态不是“未知”');
+
+  // 默认选择「② 本地后端」，但该环境没有后端 → 应自动切换到远端 API
+  const backendHtml = els['backend-options'].innerHTML;
+  check(/①[\s\S]*?远端 API/.test(backendHtml) && /②[\s\S]*?本地后端/.test(backendHtml), '底部“后端选择”卡片已渲染');
+  check(/使用中/.test(backendHtml), '卡片标注了当前实际生效的数据来源');
+  check(/远端 API/.test(els['backend-active'].textContent), `本地后端不可用时自动切换到远端 API（当前：${els['backend-active'].textContent}）`);
+  check(/已自动切换/.test(els['backend-note'].textContent), `卡片给出自动切换说明（${els['backend-note'].textContent.slice(0, 40)}…）`);
+  check(/远端 API/.test(els['source-note'].innerHTML), '顶部说明同步为远端 API');
 
   if (failures.length) {
     console.error(`\n❌ 静态模式校验未通过，失败 ${failures.length} 项\n`);
