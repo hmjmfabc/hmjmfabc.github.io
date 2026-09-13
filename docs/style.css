@@ -163,6 +163,32 @@ html[data-theme="dark"] .theme-toggle .icon-sun { display: none; }
   justify-content: center;
 }
 
+/* 标题徽标：点击跳转官网 */
+.title-flex .logo-link {
+  text-decoration: none;
+  border-radius: 14px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.title-flex .logo-link:hover,
+.title-flex .logo-link:focus-visible {
+  transform: scale(1.06);
+  outline: none;
+}
+
+.title-flex .logo-link:hover .logo,
+.title-flex .logo-link:focus-visible .logo {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.22), 0 0 0 2px var(--accent);
+}
+
+.title-flex .logo-link:active { transform: scale(0.97); }
+
+.title-flex .logo-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
 .title-flex .logo {
   display: block;
   width: 48px;

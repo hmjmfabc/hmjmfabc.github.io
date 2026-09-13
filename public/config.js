@@ -34,7 +34,8 @@ window.SGU_CONFIG = {
     "title": "SGU 剑客群组服 状态监测",
     "description": "SGU 剑客群组服 各服务状态监测",
     "footer": "Copyright © 剑客群组服 2024～2026",
-    "themeColor": "#d7b777"
+    "themeColor": "#d7b777",
+    "officialSite": "https://swordsman.top/"
   },
   "refreshIntervalMs": 300000,
   "historyLimit": 24,

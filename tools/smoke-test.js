@@ -141,7 +141,7 @@ function expectServerStatus(endpoints) {
 }
 
 (async () => {
-  console.log(`\n[1/6] 拉取状态接口 ${BASE}/api/status`);
+  console.log(`\n[1/8] 拉取状态接口 ${BASE}/api/status`);
   const data = await fetchJson(`${BASE}/api/status`);
   check(data.ok === true, '接口返回 ok');
   check(data.servers && data.servers.length === 3, `监测服务器数量为 3（实际 ${data.servers && data.servers.length}）`);
@@ -154,7 +154,7 @@ function expectServerStatus(endpoints) {
   check(endpoints.filter((e) => e.kind === 'ipv6').length === 3, 'IPv6 入口 3 个');
   check(endpoints.filter((e) => e.kind === 'ipv4').every((e) => e.srv === true), '全部 IPv4 入口均标记为 SRV 解析');
 
-  console.log('\n[2/6] 校验状态聚合规则');
+  console.log('\n[2/8] 校验状态聚合规则');
   for (const server of data.servers) {
     const expected = expectServerStatus(server.endpoints);
     const detail = server.endpoints
@@ -174,7 +174,7 @@ function expectServerStatus(endpoints) {
   warn(data.hostIpv6 !== false || data.summary.endpointsUnknown > 0, '探测端无 IPv6 时，IPv6 线路被标记为「未验证」而非离线');
   warn(data.hostIpv6 === false || data.summary.endpointsUnknown === 0, '探测端有 IPv6 时，所有线路均得到确定状态');
 
-  console.log('\n[3/6] 前端渲染测试（极简 DOM 桩）');
+  console.log('\n[3/8] 前端渲染测试（极简 DOM 桩）');
   const els = {};
   const htmlEl = makeEl('html');
   htmlEl.setAttribute('data-theme', 'light');
@@ -194,6 +194,7 @@ function expectServerStatus(endpoints) {
 
   // 真实页面会先加载 config.js / motd.js / probe.js，这里保持一致（probe.js 因涉及网络请求不加载）
   eval(fs.readFileSync(path.join(__dirname, '..', 'public', 'config.js'), 'utf8'));
+  const CONFIG_SITE = global.SGU_CONFIG && global.SGU_CONFIG.site;
   const code = fs.readFileSync(path.join(__dirname, '..', 'public', 'app.js'), 'utf8');
   eval(code);
   await new Promise((r) => setTimeout(r, 500));
@@ -210,7 +211,7 @@ function expectServerStatus(endpoints) {
   check(/^将于 \d{2}:\d{2} 后刷新$/.test(els['countdown-text'].textContent), `页脚显示刷新倒计时（${els['countdown-text'].textContent}）`);
   check(els.overall.dataset.status === data.overall, '顶部总览状态与接口一致');
 
-  console.log('\n[4/6] 检查隐藏 IP、彩色 MOTD、交流群第三栏与页脚');
+  console.log('\n[4/8] 检查隐藏 IP、彩色 MOTD、交流群第三栏与页脚');
   const page = await fetchText(`${BASE}/`);
   const css = await fetchText(`${BASE}/style.css`);
   const ipPattern = /\b(?:\d{1,3}\.){3}\d{1,3}\b/;
@@ -252,6 +253,20 @@ function expectServerStatus(endpoints) {
   check(expectedTitles.length === 3 && hrefs[0] === data.servers[0].qq.url && hrefs[1] === data.servers[1].qq.url && hrefs[2] === data.servers[2].qq.url, '交流群链接顺序与服务器顺序一致');
   check(/target="_blank" rel="noopener noreferrer"/.test(html), '交流群链接使用安全的新窗口打开方式');
 
+  console.log('\n[5/8] 校验标题徽标跳转官网');
+  const logoAnchor = /<a class="logo-wrapper logo-link"[^>]*>/.exec(page);
+  check(!!logoAnchor, '标题徽标已改为可点击链接');
+  check(!!logoAnchor && /href="https:\/\/swordsman\.top\/"/.test(logoAnchor[0]), `徽标指向官网（${logoAnchor ? /href="([^"]*)"/.exec(logoAnchor[0])[1] : '未找到'}）`);
+  check(!!logoAnchor && /target="_blank"/.test(logoAnchor[0]) && /rel="noopener noreferrer"/.test(logoAnchor[0]), '徽标以安全的新窗口方式打开');
+  check(!!logoAnchor && /title="[^"]*官网[^"]*"/.test(logoAnchor[0]) && /aria-label="[^"]*官网[^"]*"/.test(logoAnchor[0]), '徽标带「前往官网」提示与无障碍标签');
+  check(/<a class="logo-wrapper logo-link"[^>]*>\s*<img class="logo"/.test(page), '徽标图片包在链接内');
+  check(/\.title-flex \.logo-link:hover/.test(css) && /cursor|transform: scale/.test(css), '徽标有悬停反馈');
+  check(
+    (CONFIG_SITE && CONFIG_SITE.officialSite) === 'https://swordsman.top/',
+    `官网地址来自配置（${CONFIG_SITE && CONFIG_SITE.officialSite}）`
+  );
+  check(els['logo-link'] !== undefined, '前端已绑定徽标链接元素');
+
   check(/<div class="footer-copyright">Copyright © 剑客群组服 2024～2026<\/div>/.test(page), '页脚第一行为版权信息');
   check(/footer\s*\{[^}]*text-align:\s*center/.test(css), '页脚整体居中');
   check(/footer \.footer-copyright\s*\{[^}]*color:\s*var\(--copyright\)/.test(css), '版权行颜色跟随主题变量');
@@ -259,7 +274,7 @@ function expectServerStatus(endpoints) {
   check(/footer \.footer-copyright\s*\{[^}]*font-size:\s*1[5-9]px/.test(css), '版权行字号大于其它页脚文字');
   check(/id="last-updated"/.test(page) && /id="countdown-text"/.test(page), '页脚保留最后更新时间与刷新倒计时两行');
 
-  console.log('\n[5/7] 校验页面底部的“后端选择”卡片');
+  console.log('\n[6/8] 校验页面底部的“后端选择”卡片');
   const backendHtml = els['backend-options'].innerHTML;
   check(/id="backend-card"/.test(page), '页面存在“后端选择”卡片');
   check((page.match(/后端选择/g) || []).length >= 1, '卡片标题为「后端选择」');
@@ -311,7 +326,7 @@ function expectServerStatus(endpoints) {
     check(saved2.provider === first.value, `选择子接口后写入 localStorage（${saved2.provider}）`);
   }
 
-  console.log('\n[6/7] 校验静态资源缓存策略（防止浏览器继续使用旧页面）');
+  console.log('\n[7/8] 校验静态资源缓存策略（防止浏览器继续使用旧页面）');
   check(/\/style\.css\?v=[0-9a-z]+/.test(page), 'CSS 引用带版本号');
   check(/\/app\.js\?v=[0-9a-z]+/.test(page), 'JS 引用带版本号');
   check(!/href="\/style\.css"/.test(page) && !/src="\/app\.js"/.test(page), '不存在无版本号的资源引用');
@@ -325,7 +340,7 @@ function expectServerStatus(endpoints) {
   check(version.ok === true && typeof version.assetVersion === 'string', `资源版本接口可用（${version.assetVersion}）`);
   check(page.includes(version.assetVersion), '页面资源版本与接口一致');
 
-  console.log('\n[7/7] 校验深色模式与右上角切换按钮');
+  console.log('\n[8/8] 校验深色模式与右上角切换按钮');
   check(/<button id="theme-toggle"/.test(page), '页面存在主题切换按钮');
   check(/class="icon-sun"/.test(page) && /class="icon-moon"/.test(page), '按钮含太阳 / 月亮两个图标');
   const toggleRule = /\.theme-toggle\s*\{([^}]*)\}/.exec(css);

@@ -220,6 +220,16 @@ function renderBackendCard() {
   }
 }
 
+/** 标题徽标：点击跳转官网（地址可在 config.js 的 site.officialSite 调整） */
+function initLogoLink() {
+  const link = document.getElementById('logo-link');
+  if (!link) return;
+  const url = CONFIG.site && CONFIG.site.officialSite;
+  if (typeof url === 'string' && /^https?:\/\//.test(url)) {
+    link.setAttribute('href', url);
+  }
+}
+
 function renderBackendNote(text) {
   if (!el.backendNote) return;
   el.backendNote.textContent = text || '';
@@ -769,6 +779,7 @@ document.addEventListener('visibilitychange', () => {
 
 tickCountdown();
 initThemeToggle();
+initLogoLink();
 state.backend.pref = readBackendPref();
 renderBackendCard();
 loadStatus();
