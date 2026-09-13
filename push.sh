@@ -59,7 +59,8 @@ else
 fi
 
 echo "→ 推送代码"
-if ! git push -u origin "$BRANCH"; then
+# 部分网络下 HTTP/2 容易被中断，这里固定使用 HTTP/1.1 提升成功率
+if ! git -c http.version=HTTP/1.1 push -u origin "$BRANCH"; then
   cat <<'EOF'
 
 ❌ 推送失败。若提示需要用户名/密码：

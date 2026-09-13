@@ -34,7 +34,7 @@ fi
 
 echo
 echo "③ 推送到 GitHub"
-if ! git push; then
+if ! git -c http.version=HTTP/1.1 push; then
   cat <<'EOF'
 
 ❌ 推送失败。若提示需要用户名/密码：
