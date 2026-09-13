@@ -1,0 +1,25 @@
+# 运行时数据与构建产物
+logs/
+data/
+dist/
+
+# 注意：docs/ 是 GitHub Pages 的发布目录，必须提交，不能忽略
+
+# 依赖与缓存
+node_modules/
+.npm/
+.cache/
+
+# 临时文件
+.work/
+.extract/
+*.log
+*.tmp
+
+# 编辑器
+.vscode/
+.idea/
+.DS_Store
+
+# 参考用的示例页面快照（第三方站点内容，不随仓库发布）
+*.mht

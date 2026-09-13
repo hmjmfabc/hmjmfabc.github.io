@@ -1,0 +1,59 @@
+name: 部署到 GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: 构建静态站点
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # 构建脚本会依据 GITHUB_REPOSITORY 自动选择 CNAME：
+      #   hmjmfabc/hmjmfabc.github.io                     → status.yunmc.icu
+      #   mingyu-games-wmjbfs/status-swordsman.github.io  → status.swordsman.top
+      # 也可在仓库 Variables 里设置 SITE_DOMAIN 覆盖
+      - name: 构建静态站点（生成 config.js、注入版本号、写入 CNAME）
+        run: node tools/build-site.js --version=${{ github.sha }}
+        env:
+          SITE_DOMAIN: ${{ vars.SITE_DOMAIN }}
+
+      - name: 配置 Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: 上传产物
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    name: 发布
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: 部署到 GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
