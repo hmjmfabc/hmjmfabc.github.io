@@ -312,7 +312,7 @@
 
     /* ---------------- 文言（华夏） ---------------- */
     lzh: {
-      'site.title': 'SGU 劍客群組服・狀態監測',
+      'site.title': 'SGU 劍客伺服器・機況察候',
       'site.description': 'SGU 劍客群組服諸務狀態之監',
       'site.footer': 'Copyright © 劍客群組服 2024～2026',
       'site.loading': '方探諸服之況…',
