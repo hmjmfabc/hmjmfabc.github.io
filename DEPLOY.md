@@ -167,6 +167,39 @@ _github-pages-challenge-mingyu-games-wmjbfs.swordsman.top  TXT  ae1fdf3183d1f432
 > `swordsman.top` 根域正是**剑客群组服官网**（标题：剑客群组服 - 一群学生联手创建的永久公益MC服务器），
 > 托管在 `mingyu-games-wmjbfs` 账号下，**不要动它的验证设置**，否则官网会掉线。
 
+### 部署到 mingyu-games-wmjbfs/status-swordsman.github.io（已就绪）
+
+管理员已创建公开仓库 **`mingyu-games-wmjbfs/status-swordsman.github.io`**（默认分支 `main`，目前只有一个
+含 `LICENSE` 的初始提交，Pages 尚未开启）。该账号已验证 `swordsman.top`，因此**可以成功绑定
+`status.swordsman.top`**。
+
+发布脚本：
+
+```bash
+cd /data/data/com.termux/files/home/Web
+./push-sgu.sh            # 构建（CNAME=status.swordsman.top）+ 合并远端初始提交 + 推送
+./push-sgu.sh --no-push  # 只构建并提交，不推送
+```
+
+推送需要**该仓库的写权限**，三种方式任选：
+
+| 方式 | 做法 |
+| --- | --- |
+| A（推荐） | 管理员在仓库 **Settings → Collaborators** 把 `hmjmfabc` 加为协作者，之后用 `hmjmfabc` 的令牌推送 |
+| B | 使用 `mingyu-games-wmjbfs` 账号自己的 Personal Access Token 推送 |
+| C | 管理员本机自行推送：`git clone` 本仓库后 `git push` 到该仓库，或在 GitHub 网页用 **Import repository** 从 `https://github.com/hmjmfabc/hmjmfabc.github.io.git` 导入 |
+
+推送完成后（GitHub 网页操作）：
+
+1. 仓库 → **Settings → Pages → Source** 选 **GitHub Actions**（或 Deploy from a branch → `main` → `/docs`）
+2. **Custom domain** 填 `status.swordsman.top` → Save
+3. 阿里云 DNS 添加记录：`CNAME` / 主机记录 `status` / 记录值 `mingyu-games-wmjbfs.github.io`
+4. DNS 生效后勾选 **Enforce HTTPS**
+
+> 该仓库名以 `.github.io` 结尾，但账号名不是 `status-swordsman`，所以它属于**项目站点**，
+> 默认地址是 `https://mingyu-games-wmjbfs.github.io/status-swordsman.github.io/`（子路径）。
+> 站点资源已全部改为**相对路径**，因此子路径与自定义域根目录都能正常显示。
+
 ### 当前决定（2026-09）
 
 **继续使用 `https://status.yunmc.icu/`**，暂不切换域名。
